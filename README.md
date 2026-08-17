@@ -24,9 +24,13 @@ dispatch reads, and not running the same gate twice.
 ## Install
 
 ```sh
-claude plugin marketplace add github.com/gabrielbsandim/claude-kit
+claude plugin marketplace add gabrielbsandim/claude-kit
 claude plugin install claude-kit@claude-kit
 ```
+
+The first argument is `owner/repo` shorthand. `github.com/owner/repo` is rejected: it is
+neither the shorthand nor a clone URL. A full `https://github.com/owner/repo.git` also
+works, and is what you need on a host other than GitHub.
 
 Then, once per machine:
 
