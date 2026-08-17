@@ -85,6 +85,9 @@ its own on it, which cannot be told apart from one another session just created.
 
 ## Stage 5 · Report
 
-Three to six lines: what shipped, the gate result including what was skipped by receipt,
-the pull request link, and what was left out. Never declare done without the numbers, and
-name a gate that stopped you as such.
+At most 600 characters of prose, roughly 95 words: what shipped, the gate result including
+what was skipped by receipt, the pull request link, and what was left out. Never declare
+done without the numbers, and name a gate that stopped you as such.
+
+Characters, not lines, because a paragraph counts as one line in the source and four in the
+terminal. 100 characters is about one rendered line.

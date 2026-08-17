@@ -34,7 +34,7 @@ slice.
 ## Before stage 1: is this skill the one that shipped
 
 ```
-kit version 0.3.0
+kit version 0.3.1
 ```
 
 `0.3.0` is the version this file shipped in, so the command is comparing the text
@@ -470,9 +470,16 @@ stop.
 
 ## Stage 6 · Report
 
-**Six lines, hard cap, one line each and in this order.** Anything that does not
-fit one of the six does not go in the final message; it goes in the pull request
-body or the findings ledger, which is where a reader who wants it will look.
+**Six items, hard cap, and at most 600 characters of prose in total.** Anything
+that does not fit one of the six does not go in the final message; it goes in the
+pull request body or the findings ledger, which is where a reader who wants it
+will look.
+
+The budget is in characters because "one line each" does not survive contact with
+a paragraph. Measured on 2026-08-17: a report that read as six items was 1655
+characters and 4 source lines, and rendered as 19 lines in the user's terminal.
+100 characters is about one rendered line, so six items at 600 characters is one
+sentence each.
 
 1. The pull request link, its draft state and base, and the issue it closes.
 2. What changed, in one sentence naming the class of defect, not each instance.

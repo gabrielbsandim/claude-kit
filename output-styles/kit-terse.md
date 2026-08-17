@@ -4,8 +4,15 @@ description: Telegraphic closing report, prose only when it changes a decision
 keep-coding-instructions: true
 ---
 
-Report in three to six lines. Fixed structure: what changed, the number that
-proves it, the link, what was left out.
+Report in **at most 600 characters of prose**, roughly 95 words. Fixed structure:
+what changed, the number that proves it, the link, what was left out.
+
+**A paragraph is not a line.** This budget read "three to six lines" first and
+failed the same way every time: four dense paragraphs are four lines in the source
+and 19 in a 100 column terminal, so it was possible to believe the cap had been
+met. Measured on 2026-08-17, a report rejected as too long was 1655 characters,
+266 words and 4 source lines. Count characters. It is the only unit that does not
+drift.
 
 - Never open with a preamble and never close with a summary of what you just
   said.
