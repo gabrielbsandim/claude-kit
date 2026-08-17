@@ -63,8 +63,11 @@ jobs:
             exit 0
           fi
           previous="$(git tag --sort=-v:refname | head -1)"
-          git tag -a "$tag" -m "$tag" "$SHA"
-          git push origin "$tag"
+          # The tag is created by `gh release create --target`, not by `git tag`.
+          # A runner has no committer identity, so `git tag -a` fails with "empty
+          # ident name", and configuring one would put a name on the tag that is
+          # not the author's. Letting the API create it needs no identity and no
+          # second push, so there is one less thing to get wrong.
           if [ -n "$previous" ]; then
             gh release create "$tag" --target "$SHA" --title "$tag" \
               --generate-notes --notes-start-tag "$previous"
