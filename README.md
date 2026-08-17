@@ -161,10 +161,18 @@ disabled within a day, so every "must block" case is paired with a "must not blo
 | Jira and Azure DevOps adapters | written from the API contract, **never run**, marked so in their own source |
 | `evals/` | schema validated offline, **never run**: `claude plugin eval` is early access and was not enabled on the account this was built from |
 
+## The four skills
+
+| Skill | For |
+| --- | --- |
+| `task` | one repository task, description to draft pull request |
+| `investigate` | a question about the system, read-only, ends in an answer and never in a change |
+| `ship` | work that is already committed, to a draft pull request with the board moved |
+| `note` | one durable fact into a markdown vault, with the provenance that keeps it checkable |
+
 ## Not here yet
 
-`ship` as a standalone skill for work that already exists, and a `note` skill for writing
-a durable fact into a knowledge vault.
+A verified Azure DevOps adapter, and a run of the eval suite.
 
 ## License
 
