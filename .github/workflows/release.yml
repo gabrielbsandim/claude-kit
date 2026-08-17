@@ -68,10 +68,30 @@ jobs:
           # ident name", and configuring one would put a name on the tag that is
           # not the author's. Letting the API create it needs no identity and no
           # second push, so there is one less thing to get wrong.
-          if [ -n "$previous" ]; then
-            gh release create "$tag" --target "$SHA" --title "$tag" \
-              --generate-notes --notes-start-tag "$previous"
-          else
-            gh release create "$tag" --target "$SHA" --title "$tag" --generate-notes
-          fi
+          # Retried, because the failure this actually hit was an HTTP 503 from
+          # /releases/generate-notes, and without a retry a transient API error
+          # loses the release quietly: main carries a version with no tag, and
+          # nothing says so until someone looks at the tag list.
+          set +e
+          for attempt in 1 2 3 4 5; do
+            if [ -n "$previous" ]; then
+              gh release create "$tag" --target "$SHA" --title "$tag" \
+                --generate-notes --notes-start-tag "$previous"
+            else
+              gh release create "$tag" --target "$SHA" --title "$tag" --generate-notes
+            fi
+            code=$?
+            [ $code -eq 0 ] && break
+            # A tag that appeared between the check above and now means another run
+            # won the race. That is success, not something to retry into a
+            # duplicate.
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "$tag was created by another run while this one was retrying"
+              exit 0
+            fi
+            echo "attempt $attempt failed with $code, retrying in $((attempt * 15))s" >&2
+            sleep $((attempt * 15))
+          done
+          set -e
+          gh release view "$tag" >/dev/null || { echo "gave up creating $tag" >&2; exit 1; }
           echo "released $tag at $SHA"
