@@ -31,6 +31,31 @@ validates it. A repo with no config still runs on detected defaults, and a
 wrong default fails loudly at a gate rather than quietly reviewing the wrong
 slice.
 
+## Before stage 1: is this skill the one that shipped
+
+```
+kit version 0.3.0
+```
+
+`0.3.0` is the version this file shipped in, so the command is comparing the text
+you are reading against what is installed on the machine. A running session keeps
+the plugin copy it loaded at startup, and `claude plugin update` does not reach it.
+Measured on 2026-08-17: a funnel run executed the 0.1.0 skill while 0.2.0 had been
+installed for five minutes, so that task ran without a browser lens, without the
+report cap, and without two other rules that had already shipped, and nothing in
+its output said so.
+
+- **STALE SKILL**: tell the user, in one line, that the session is running the old
+  copy and has to be restarted, and stop. You cannot fix this from inside the
+  session, and running anyway spends an hour producing work against rules that were
+  replaced.
+- **STALE KIT**: you can fix this. Run the `kit setup` line it prints, then carry on.
+- **`unknown subcommand: version`**: the `kit` on PATH is older than 0.3.0, which is
+  the STALE KIT case with no way to say so. `kit setup` from the newest installed
+  copy fixes it. Find that copy with
+  `ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/claude-kit/*/ | sort -V | tail -1`.
+- Anything else: carry on without mentioning it.
+
 ## Rules that hold for the whole funnel
 
 - **The repo's own pipeline document wins.** `kit config get .docs.pipeline`
@@ -434,9 +459,14 @@ stop.
 4. `kit board in_review --issue <issue>`, after the pull request URL exists.
 5. Never `done`. The funnel does not merge, and the tracker's own automation
    owns that column.
-6. `kit worktree rm <issue>`. It refuses while anything is uncommitted or
-   unpushed, so running it is safe and skipping it is the thing that leaves 27
-   orphans and 33 GB behind.
+6. `kit worktree gc --yes`, not `rm`. The pull request is open at exactly this
+   head and everything is pushed, which is the definition of finished, and `gc`
+   collects what earlier tasks left in the same pass. It keeps anything it cannot
+   prove finished, including a worktree sitting on the base tip with nothing of its
+   own, because that is indistinguishable from one another session just created.
+   `rm <issue>` was here until 0.3.0 and could never succeed: step 3 opens the pull
+   request, and an open pull request used to mean KEEP, so every task leaked its
+   worktree. 27 of them and 35 GB when it was found.
 
 ## Stage 6 · Report
 

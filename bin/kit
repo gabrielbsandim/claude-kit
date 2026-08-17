@@ -9,6 +9,7 @@
 #   kit screens                routes the changed screens are reachable at
 #   kit board <status> --issue N
 #   kit doctor                 is this machine ready
+#   kit version [expected]     which copy is running, and whether it is the newest
 #   kit setup                  put `kit` on PATH
 set -euo pipefail
 
@@ -38,6 +39,61 @@ case "$cmd" in
       -*|"") exec "$KIT_BIN/review-package" "$@" ;;
       *) exec "$KIT_BIN/review-package" --dispatches "$@" ;;
     esac
+    ;;
+
+  # Three copies of this plugin can disagree at once, and every one of them fails
+  # silently. A running session keeps the copy it loaded at startup, so its skills
+  # and agents survive a `claude plugin update` untouched. `kit setup` links into a
+  # version-pinned cache directory, so the executable on PATH keeps pointing at
+  # whatever was newest the day it was linked. And the cache itself only moves when
+  # an update runs. Measured on 2026-08-17: a funnel run executed the 0.1.0 skill
+  # while 0.2.0 had been installed for five minutes, which cost a browser lens, a
+  # report cap and two other rules that had already shipped.
+  version|--version|-v)
+    expected="${1:-}"
+    manifest="$KIT_ROOT/.claude-plugin/plugin.json"
+    mine="$(jq -r '.version // empty' "$manifest" 2>/dev/null || true)"
+    name="$(jq -r '.name // empty' "$manifest" 2>/dev/null || true)"
+    [ -n "$mine" ] || mine=unknown
+    [ -n "$name" ] || name=claude-kit
+    cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+
+    newest="" newest_root=""
+    while IFS= read -r m; do
+      [ -f "$m" ] || continue
+      [ "$(jq -r '.name // empty' "$m" 2>/dev/null || true)" = "$name" ] || continue
+      v="$(jq -r '.version // empty' "$m" 2>/dev/null || true)"
+      [ -n "$v" ] || continue
+      if [ -z "$newest" ] || [ "$(printf '%s\n%s\n' "$newest" "$v" | sort -V | tail -1)" = "$v" ]; then
+        newest="$v"; newest_root="$(dirname "$(dirname "$m")")"
+      fi
+    done < <(find "$cfg/plugins" -mindepth 2 -maxdepth 6 -name plugin.json -path '*/.claude-plugin/*' 2>/dev/null || true)
+
+    printf '%-10s %-8s %s\n' running "$mine" "$KIT_ROOT"
+    if [ -n "$newest" ]; then
+      printf '%-10s %-8s %s\n' installed "$newest" "$newest_root"
+    else
+      printf '%-10s %-8s no installed copy under %s\n' installed none "$cfg/plugins"
+    fi
+    [ -n "$expected" ] && printf '%-10s %-8s declared by the caller\n' caller "$expected"
+
+    stale=0
+    newer_than() { # is $2 strictly newer than $1
+      [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$2" ]
+    }
+    if [ -n "$newest" ] && [ -n "$expected" ] && newer_than "$expected" "$newest"; then
+      printf 'STALE SKILL   the caller is %s and %s is installed. A running session keeps the\n' "$expected" "$newest"
+      printf '              plugin copy it loaded at startup, so restart the session; an update alone\n'
+      printf '              does not reach it.\n'
+      stale=1
+    fi
+    if [ -n "$newest" ] && [ "$mine" != unknown ] && newer_than "$mine" "$newest"; then
+      printf 'STALE KIT     this executable is %s and %s is installed. `kit setup` links a\n' "$mine" "$newest"
+      printf '              version-pinned path, so run it again: %s/bin/kit setup\n' "$newest_root"
+      stale=1
+    fi
+    [ $stale -eq 0 ] && printf 'up to date\n'
+    exit $((stale * 3))
     ;;
 
   setup)

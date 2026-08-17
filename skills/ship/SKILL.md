@@ -70,16 +70,18 @@ Fill the repo's template honestly, which means three specific things:
 
 ```
 kit board in_review --issue <issue>
-kit worktree rm <issue>
+kit worktree gc --yes
 ```
 
 The board move goes after the pull request URL exists. Never `done`: this does not merge,
 and the tracker's own automation owns that column.
 
-`worktree rm` refuses while anything is uncommitted or unpushed, so running it is safe and
-skipping it is what leaves orphans behind. It prints the one command that recreates the
-worktree, so removal is not a decision you have to be sure about. `--dry-run` first if you
-want to see the state without acting.
+`gc` removes only what it can prove is finished, which now includes an open pull request
+sitting at exactly this head, since everything is then on the remote and the branch
+survives removal. It keeps the rest and prints why, including a worktree with nothing of
+its own on it, which cannot be told apart from one another session just created. `rm
+<issue>` was the step here until 0.3.0 and could not succeed once the pull request existed.
+`gc --dry-run` first if you want to see the verdicts without acting.
 
 ## Stage 5 · Report
 

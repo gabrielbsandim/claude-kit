@@ -52,6 +52,16 @@ state_of() {
   [ "$branch" = DETACHED ] && { printf 'KEEP detached head'; return; }
 
   if git -C "$path" merge-base --is-ancestor HEAD "origin/$BASE" 2>/dev/null; then
+    # Sitting exactly on the base tip with nothing of its own is what a worktree
+    # created seconds ago looks like, and it is indistinguishable from one that was
+    # abandoned before the first commit. `gc` runs at ship now, so guessing here
+    # would delete the worktree another session is still setting up. A head that is
+    # merely an ancestor is different: it carries an older base, so nobody is
+    # starting from it.
+    if [ "$(git -C "$path" rev-parse HEAD)" = "$(git -C "$path" rev-parse "origin/$BASE" 2>/dev/null)" ]; then
+      printf 'KEEP nothing of its own yet, so it cannot be told apart from a worktree just created'
+      return
+    fi
     printf 'FINISHED head is in %s' "$BASE"
     return
   fi
@@ -66,7 +76,24 @@ state_of() {
   if [ -n "$pr" ]; then
     read -r state num head_oid <<<"$pr"
     case "$state" in
-      OPEN) printf 'KEEP pr #%s open' "$num"; return ;;
+      OPEN)
+        # An open pull request is not work at risk once the head it shows is the head
+        # this worktree holds and the tree is clean, which the two checks at the top
+        # already established. Everything is on the remote, the branch is untouched by
+        # removal, and the review happens on GitHub. Treating open as KEEP is what made
+        # the funnel's own teardown step impossible to satisfy: stage 5 opens the pull
+        # request and then asks for the worktree back, so every task leaked one. It was
+        # 27 worktrees and 35 GB on the machine this was found on.
+        if [ "$(git -C "$path" rev-parse HEAD)" = "$head_oid" ]; then
+          printf 'FINISHED pr #%s open at this exact head, so everything is pushed' "$num"
+        elif ! git -C "$path" cat-file -e "$head_oid" 2>/dev/null; then
+          printf 'KEEP pr #%s open at %s, which this repo has never fetched, so what is here cannot be proven pushed' \
+            "$num" "${head_oid:0:8}"
+        else
+          printf 'KEEP %s commit(s) past the head pr #%s shows, so they are only here' \
+            "$(git -C "$path" rev-list --count "$head_oid..HEAD" 2>/dev/null || echo '?')" "$num"
+        fi
+        return ;;
       MERGED|CLOSED)
         if [ "$(git -C "$path" rev-parse HEAD)" = "$head_oid" ]; then
           printf 'FINISHED pr #%s %s at this exact head' "$num" "$(printf '%s' "$state" | tr 'A-Z' 'a-z')"

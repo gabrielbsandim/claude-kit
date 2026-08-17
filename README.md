@@ -85,7 +85,8 @@ Seven things are commands rather than instructions, because prose does not execu
 
 | Command | What it removes |
 | --- | --- |
-| `kit worktree add/rm/gc` | the teardown nobody does. `gc` removes only what it can prove is finished and says why it kept the rest. It once left 27 orphans and 33 GB behind. |
+| `kit worktree add/rm/gc` | the teardown nobody does. `gc` removes only what it can prove is finished and says why it kept the rest, and the funnel runs it at ship. While the teardown step was `rm`, which could not succeed once the pull request existed, it left 27 orphans and 35 GB behind. |
+| `kit version <declared>` | a session silently running an old copy of this plugin. It compares the version the skill declares, the version of the `kit` on PATH and the newest installed, and names which of the two fixes applies. |
 | `kit gate <stage>` | paying twice for the same check. Receipts are keyed by the working tree's SHA, so the pre-push check skips what the implement gate just proved. `gateJobs` runs a stage's independent gates at once; `exclusive` keeps one alone. |
 | `kit review <level>` | one dispatch per reviewer and a blanket document load. One dispatch per slice instead, with the diff written to a file so no reviewer runs `git`. |
 | `kit screens` | guessing which URL renders a component the diff changed. It walks the import graph to the router entry point that reaches it. |
@@ -233,21 +234,27 @@ main, so no bot exception is needed.
 ## Tests
 
 ```sh
-python3 tests/test-hooks.py           # 36 cases, half of them "must not block"
-python3 tests/test-screen-routes.py   # 10 cases: route groups, dynamic segments, the import walk
-python3 tests/test-gate-jobs.py       # 13 cases: that concurrency happens, and that exclusive means alone
-python3 tests/check-eval-schema.py    # eval frontmatter against the harness's allowed keys
-claude plugin validate . --strict     # manifests, skills, agents, commands
+python3 tests/test-hooks.py            # 36 cases, half of them "must not block"
+python3 tests/test-screen-routes.py    # 10 cases: route groups, dynamic segments, the import walk
+python3 tests/test-gate-jobs.py        # 14 cases: that concurrency happens, and that exclusive means alone
+python3 tests/test-worktree-state.py   # 23 cases: what teardown will and will not delete
+python3 tests/test-kit-version.py      # 19 cases: the three copies of this plugin, and the skill literal
+python3 tests/check-eval-schema.py     # eval frontmatter against the harness's allowed keys
+claude plugin validate . --strict      # manifests, skills, agents, commands
 ```
 
 CI runs all of those, plus a syntax check per script dispatched on the shebang,
 `shellcheck`, and a check that no shipped text contains an em dash.
 
-Two of those suites are shaped by a specific failure. The hook tests pair every
+Three of those suites are shaped by a specific failure. The hook tests pair every
 "must block" case with a "must not block" one, because a guard with a false positive
-gets disabled within a day. The gate tests assert on wall clock and ordering rather
-than on the verdict, because three gates that pass are three gates that pass whether
-they ran together or not.
+gets disabled within a day. The gate tests assert on the order of start and end
+markers rather than on wall clock, because three gates that pass are three gates
+that pass whether they ran together or not, and because `sleep 2` on the machine
+this was written on returns in 1.06 seconds about one run in six. The teardown tests
+pair every "would remove" case with a "must keep" one, since the cost of the two
+mistakes is not symmetric: a worktree kept too long is disk, and one removed too
+early is somebody's unpushed work.
 
 ## Status of each piece
 
@@ -257,7 +264,9 @@ they ran together or not.
 | GitHub Projects v2 board adapter | verified end to end: discover, read, write |
 | review grouping and doc-load numbers | measured on a real branch, reproducible with `kit review deep` |
 | `kit screens` route mapping | 10 cases in CI, and resolved a real component three levels below its page in 0.29s |
-| gate concurrency | 13 cases in CI, and the 423.5s to 268.7s measurement above |
+| gate concurrency | 14 cases in CI, and the 423.5s to 268.7s measurement above |
+| worktree teardown | 23 cases in CI. The first `gc --yes` after the verdict was fixed removed 24 of 27 worktrees and took that tree from 35 GB to 4.2 GB, measured with `du -shc` on both sides |
+| `kit version` | 19 cases in CI. Found by a real run: a task executed the 0.1.0 skill while 0.2.0 had been installed for five minutes |
 | the browser lens | plumbing proven: server started, polled, navigated, resized, and the layout probe named the overflowing element and the below-fold button. **Never run against a real authenticated app**, so the auth path and the dispatch prompt are unproven |
 | Jira and Azure DevOps adapters | written from the API contract, **never run**, marked so in their own source |
 | `evals/` | schema validated offline, **never run**: `claude plugin eval` is early access and was not enabled on the account this was built from |

@@ -62,6 +62,15 @@ jobs:
       - name: Gate concurrency
         run: python3 tests/test-gate-jobs.py
 
+      - name: Worktree teardown verdicts
+        run: |
+          git config --global user.email ci@example.com
+          git config --global user.name ci
+          python3 tests/test-worktree-state.py
+
+      - name: Plugin version staleness
+        run: python3 tests/test-kit-version.py
+
       - name: Eval suite schema
         run: |
           pip install --quiet pyyaml
