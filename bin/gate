@@ -178,7 +178,12 @@ launch_group() {
     rm -f "$st"
     return 0
   fi
-  printf 'parallel       %s gates at once: %s\n' "$#" "$*"
+  # min(group, jobs), not the group size: at --jobs 1 a group of three still runs
+  # one at a time, and printing "3 gates at once" there describes a run that did
+  # not happen.
+  at_once=$#
+  [ "$jobs" -lt "$at_once" ] && at_once="$jobs"
+  printf 'parallel       %s gates at once: %s\n' "$at_once" "$*"
   for g in "$@"; do
     st="$(mktemp)"
     statuses="$statuses $g:$st"

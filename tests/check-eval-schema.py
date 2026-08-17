@@ -17,7 +17,7 @@ import sys
 try:
     import yaml
 except ImportError:
-    print("pyyaml nao instalado, checagem de schema pulada")
+    print("pyyaml is not installed, schema check skipped")
     sys.exit(0)
 
 ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "evals")
@@ -74,7 +74,7 @@ for case in cases:
             for key in set(data) - PROMPT_KEYS:
                 fail(f"{case}/prompt.md: chave desconhecida {key!r}")
             if not body.strip():
-                fail(f"{case}/prompt.md: corpo vazio, nao ha prompt para enviar")
+                fail(f"{case}/prompt.md: empty body, there is no prompt to send")
 
     if os.path.exists(yml):
         data = yaml.safe_load(open(yml, encoding="utf8")) or {}
@@ -86,7 +86,7 @@ for case in cases:
 
     graders = sorted(glob.glob(os.path.join(base, "graders", "*.md")))
     if not graders and "graders" not in (yaml.safe_load(open(yml, encoding="utf8")) or {} if os.path.exists(yml) else {}):
-        fail(f"{case}: nenhum grader, o caso nao pontua nada")
+        fail(f"{case}: no grader, so the case scores nothing")
     for path in graders:
         name = os.path.relpath(path, ROOT)
         data, body = frontmatter(path)
@@ -94,10 +94,10 @@ for case in cases:
             continue  # files with no frontmatter are ignored by the harness
         kind = data.get("type")
         if kind not in GRADER_KEYS:
-            fail(f"{name}: type {kind!r} nao existe")
+            fail(f"{name}: type {kind!r} does not exist")
             continue
         for key in set(data) - GRADER_COMMON - GRADER_KEYS[kind]:
-            fail(f"{name}: chave {key!r} nao vale para type {kind}")
+            fail(f"{name}: key {key!r} is not valid for type {kind}")
         if data.get("weight", 1) is not None and float(data.get("weight", 1)) <= 0:
             fail(f"{name}: weight tem de ser maior que zero")
         if kind in ("llm", "baseline") and not body.strip() and "criteria" not in data:
@@ -111,4 +111,4 @@ print()
 if problems:
     print(f"{len(problems)} problema(s)")
     sys.exit(1)
-print(f"{len(cases)} caso(s), schema ok")
+print(f"{len(cases)} case(s), schema ok")

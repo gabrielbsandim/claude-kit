@@ -52,6 +52,12 @@ slice.
 - **Concurrency comes from the config**, `maxParallelAgents`. On a small machine
   this is 3, not 7. Read-only fan-out runs in parallel; anything that writes
   runs alone.
+- **Everything the funnel writes is English, whatever language the conversation
+  is in.** Branch names, commit messages, the pull request body, code, comments,
+  documents, and the label and description of every dispatch. Talk to the user in
+  their language; write artifacts in English. The tell that this drifted is a
+  dispatch list reading "Re-review de testes da 582", which is a label three
+  people later read in a repository whose every other line is English.
 
 ### Effort level, declared by the spec in stage 1
 

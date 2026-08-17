@@ -107,7 +107,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
 # ----------------------------------------------------------------- no-em-dash
 print("\n== no-em-dash")
-DASH = "\u2014"  # escapado: o CI do proprio repo recusa o literal
+DASH = "\u2014"  # Escaped: this repo's own CI refuses the literal character
 hook_src = os.path.join(ROOT, "hooks", "no-em-dash.py")
 for name, payload, env, want in [
     ("em dash in a note", write("/tmp/x/nota.md", f"texto {DASH} aqui"), None, BLOCK),
@@ -123,4 +123,4 @@ print()
 if failures:
     print(f"{len(failures)} falha(s): {', '.join(failures)}")
     sys.exit(1)
-print(f"todos passaram ({len(checked)} casos)")
+print(f"all passed ({len(checked)} cases)")

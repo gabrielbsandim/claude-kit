@@ -6,7 +6,15 @@ that a failure survives being run next to a passing gate.
 
 Concurrency is the one feature here that can look correct while being wrong. Three
 gates that pass are three gates that pass whether they ran together or not, so
-every case below asserts on wall clock or on ordering, never only on the verdict.
+every case asserts on the interleaving of start and end markers each gate appends
+to a file.
+
+**Not on wall clock**, which is the version of this file that existed first and
+failed one run in three. On the machine this was written on, `sleep 2` returns
+after 1.06 seconds of wall clock with exit status 0, roughly one run in six: the
+host steps its realtime clock while the sleep measures its own deadline against
+it. So a wall-clock assertion tests the host's timekeeping, and the marker order
+tests what the feature actually claims.
 """
 import json
 import os
@@ -15,7 +23,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 
 KIT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GATE = os.path.join(KIT, "bin", "gate")
@@ -49,26 +56,31 @@ def build(root, cfg):
 
 
 def run(root, *args):
-    started = time.time()
     out = subprocess.run([GATE] + list(args), cwd=root, capture_output=True, text=True)
-    return {"seconds": time.time() - started,
-            "stdout": out.stdout, "stderr": out.stderr, "code": out.returncode}
+    return {"stdout": out.stdout, "stderr": out.stderr, "code": out.returncode}
 
 
 SLEEP = 2
 
+
+def marked(name, exclusive=False):
+    """A gate that appends its own start and end, so overlap is a fact in a file."""
+    gate = {"cmd": "echo %s-start >> order.log; sleep %d; echo %s-end >> order.log"
+                   % (name, SLEEP, name)}
+    if exclusive:
+        gate["exclusive"] = True
+    return gate
+
+
 CFG = {
     "base": "main",
     "gates": {
-        "a": {"cmd": "sleep %d" % SLEEP},
-        "b": {"cmd": "sleep %d" % SLEEP},
-        "c": {"cmd": "sleep %d" % SLEEP},
-        # Writes the moment it starts and again when it ends, so an overlap with
-        # another gate is provable from the file rather than from the clock alone.
-        "solo": {"cmd": "echo solo-start >> order.log; sleep %d; echo solo-end >> order.log" % SLEEP,
-                 "exclusive": True},
-        "noisy": {"cmd": "echo other-start >> order.log; sleep %d; echo other-end >> order.log" % SLEEP},
-        "boom": {"cmd": "echo o-motivo-real >&2; exit 1"},
+        "a": marked("a"),
+        "b": marked("b"),
+        "c": marked("c"),
+        "solo": marked("solo", exclusive=True),
+        "noisy": marked("noisy"),
+        "boom": {"cmd": "echo the-real-reason >&2; exit 1"},
     },
     "stages": {
         "three": ["a", "b", "c"],
@@ -81,41 +93,67 @@ CFG = {
 }
 
 
+def order(root):
+    path = os.path.join(root, "order.log")
+    if not os.path.exists(path):
+        return []
+    return open(path).read().split()
+
+
+def reset_order(root):
+    open(os.path.join(root, "order.log"), "w").close()
+
+
+def overlaps(marks):
+    """Names whose run overlapped another's, read off the marker sequence."""
+    open_now, overlapping = set(), set()
+    for m in marks:
+        name, edge = m.rsplit("-", 1)
+        if edge == "start":
+            if open_now:
+                overlapping.update(open_now | {name})
+            open_now.add(name)
+        else:
+            open_now.discard(name)
+    return sorted(overlapping)
+
+
 def main():
     root = tempfile.mkdtemp(prefix="kit-gatejobs-")
     try:
         build(root, dict(CFG, gateJobs=3))
 
+        reset_order(root)
         r = run(root, "three")
-        check("three 2s gates at jobs=3 finish in about one gate's time",
-              round(r["seconds"], 1), SLEEP + 1.5, lambda got, lim: got < lim)
+        check("three gates at jobs=3 all overlap", overlaps(order(root)), ["a", "b", "c"])
         check("all three still pass", r["stdout"].count("pass"), 3)
         check("the parallel line names them", "3 gates at once" in r["stdout"], True)
 
         # Same gates, serial, and the receipts from the run above have to be ignored
-        # or this measures nothing.
+        # or this proves nothing.
+        reset_order(root)
         r = run(root, "--force", "--jobs", "1", "three")
-        check("the same gates at jobs=1 take the sum",
-              round(r["seconds"], 1), SLEEP * 3, lambda got, low: got >= low)
+        check("the same gates at jobs=1 never overlap", overlaps(order(root)), [])
+        check("and they all still ran", len(order(root)), 6)
 
         # Output integrity: a pass line must never be spliced by another gate's.
+        reset_order(root)
         r = run(root, "--force", "three")
         bad = [ln for ln in r["stdout"].splitlines()
                if ln.strip() and not re.match(r"^(\w[\w-]*\s+(pass|run|skip|FAIL)|parallel|\d+ ran|$)", ln)]
         check("no line is spliced by a concurrent gate", bad, [])
 
         # An exclusive gate is a barrier: its neighbour must be finished before it
-        # starts. Proven from the order file, not from the wall clock.
-        open(os.path.join(root, "order.log"), "w").close()
+        # starts.
+        reset_order(root)
         r = run(root, "--force", "barrier")
-        order = open(os.path.join(root, "order.log")).read().split()
         check("exclusive gate does not overlap its neighbour",
-              order, ["other-start", "other-end", "solo-start", "solo-end"])
+              order(root), ["noisy-start", "noisy-end", "solo-start", "solo-end"])
 
         # A failure next to a pass still reports its own reason and its own log.
         r = run(root, "--force", "mixed")
         check("the failing gate is named FAIL", "boom" in r["stderr"] and "FAIL" in r["stderr"], True)
-        check("the failure reason survives concurrency", "o-motivo-real" in r["stderr"], True)
+        check("the failure reason survives concurrency", "the-real-reason" in r["stderr"], True)
         check("a log path is printed", "log      " in r["stderr"], True)
         check("the passing neighbour still passes", "a              pass" in r["stdout"], True)
         check("exit code is non-zero", r["code"] != 0, True)
