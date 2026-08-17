@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# Runs a stage's gates and writes a receipt keyed by the tree it proved.
+#
+#   gate <stage>            run the gates listed for that stage
+#   gate --gates a,b        run named gates
+#   gate --verify <stage>   exit 0 only if a receipt already covers this tree
+#   gate --force <stage>    ignore receipts
+#   gate --receipts         list receipts for the current tree
+#
+# Why a receipt: the pre-push check and the stage-3 gate run byte-identical
+# commands over a tree that just passed. Skipping the second run is worth about
+# three minutes per task in the repository this was measured in, and the receipt
+# is what makes the skip provable rather than assumed. The key is the tree SHA of
+# the working directory, so any edit whatsoever invalidates it.
+set -euo pipefail
+
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CFG="$BIN_DIR/funnel-config"
+REPO_ROOT="$("$CFG" root)"
+# Receipts are content-addressed by tree, so sharing them across the worktrees of
+# one repository is correct and free. Review packages are not: two tasks in two
+# worktrees would clobber each other, so those live in the per-worktree git dir.
+RECEIPTS="$(git rev-parse --path-format=absolute --git-common-dir)/claude-kit/receipts"
+
+die() { printf '%s\n' "$*" >&2; exit 1; }
+
+# Tree SHA of the working directory, including untracked-but-not-ignored files,
+# computed in a throwaway index so the real one is never touched.
+work_tree_sha() {
+  local idx tree
+  idx="$(mktemp)"
+  rm -f "$idx"
+  GIT_INDEX_FILE="$idx" git read-tree HEAD 2>/dev/null || true
+  GIT_INDEX_FILE="$idx" git add -A
+  tree="$(GIT_INDEX_FILE="$idx" git write-tree)"
+  rm -f "$idx"
+  printf '%s' "$tree"
+}
+
+cmd_hash() { printf '%s' "$1" | git hash-object --stdin | cut -c1-8; }
+
+force=0 verify=0 gates=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --force) force=1; shift ;;
+    --verify) verify=1; shift ;;
+    --gates) gates="$(printf '%s' "$2" | tr ',' '\n')"; shift 2 ;;
+    --receipts)
+      tree="$(work_tree_sha)"
+      printf 'tree %s\n' "$tree"
+      ls -1 "$RECEIPTS" 2>/dev/null | grep "^$tree\." || printf 'no receipts for this tree\n'
+      exit 0
+      ;;
+    -*) die "unknown flag: $1" ;;
+    *) stage="$1"; shift ;;
+  esac
+done
+
+if [ -z "$gates" ]; then
+  [ -n "${stage:-}" ] || die "usage: gate <stage> | gate --gates a,b"
+  gates="$("$CFG" gates "$stage")"
+  [ -n "$gates" ] || die "stage \"$stage\" lists no gates; funnel-config get .stages shows the stages"
+fi
+
+mkdir -p "$RECEIPTS"
+tree="$(work_tree_sha)"
+failed=0 ran=0 skipped=0
+
+for g in $gates; do
+  c="$("$CFG" get ".gates.\"$g\".cmd")"
+  [ -n "$c" ] || die "gate \"$g\" has no cmd in the config"
+  receipt="$RECEIPTS/$tree.$g.$(cmd_hash "$c")"
+
+  if [ -f "$receipt" ] && [ $force -eq 0 ]; then
+    printf '%-14s skip   receipt from %s\n' "$g" "$(head -1 "$receipt")"
+    skipped=$((skipped + 1))
+    continue
+  fi
+
+  if [ $verify -eq 1 ]; then
+    printf '%-14s MISSING receipt\n' "$g" >&2
+    failed=$((failed + 1))
+    continue
+  fi
+
+  log="$(mktemp)"
+  start=$SECONDS
+  printf '%-14s run    %s\n' "$g" "$c"
+  if ( cd "$REPO_ROOT" && eval "$c" ) >"$log" 2>&1; then
+    dur=$((SECONDS - start))
+    { date -u +%Y-%m-%dT%H:%M:%SZ; printf 'cmd: %s\nseconds: %s\n' "$c" "$dur"; } >"$receipt"
+    printf '%-14s pass   %ss\n' "$g" "$dur"
+    ran=$((ran + 1))
+    rm -f "$log"
+  else
+    dur=$((SECONDS - start))
+    printf '%-14s FAIL   %ss\n' "$g" "$dur" >&2
+    tail -60 "$log" >&2
+    # Deterministic flake data, not a verdict: which quarantined files appear in
+    # the failure, and whether this branch's diff can even reach them.
+    base="$("$CFG" get .base)"
+    touched="$(git -C "$REPO_ROOT" diff --name-only "origin/$base...HEAD" 2>/dev/null || true)"
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue
+      if grep -qF -- "$f" "$log"; then
+        if printf '%s\n' "$touched" | grep -qxF -- "$f"; then
+          printf 'flake    %s is quarantined BUT this diff touches it, so treat it as a real failure\n' "$f" >&2
+        else
+          printf 'flake    %s is quarantined and this diff does not touch it, re-run it alone before blaming the change\n' "$f" >&2
+        fi
+      fi
+    done < <("$CFG" get '.flaky[]?.file')
+    printf 'log      %s\n' "$log" >&2
+    failed=$((failed + 1))
+  fi
+done
+
+if [ $verify -eq 1 ]; then
+  [ $failed -eq 0 ] && printf 'all receipts present for tree %s\n' "$tree"
+  [ $failed -eq 0 ] || exit 1
+  exit 0
+fi
+
+printf '\n%s ran, %s skipped by receipt, %s failed (tree %s)\n' "$ran" "$skipped" "$failed" "${tree:0:8}"
+exit $((failed > 0))

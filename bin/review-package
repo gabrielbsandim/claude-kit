@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+# Builds the exact package one review lens reads, and nothing else.
+#
+#   review-package --plan <light|standard|deep> [--since <sha>]
+#   review-package <lens> [--since <sha>]
+#   review-package --disjoint <lensA> <lensB>
+#
+# Why this exists: two thirds of a typical diff is test code, so an unscoped
+# `git diff base...HEAD` made four of five lenses read ~1900 lines that only one
+# of them had a use for. And the doc load is worse than the diff: a blanket
+# "read architecture, conventions, frontend, testing" is 18.5k tokens before the
+# agent opens a file, paid once per lens, at the most expensive tier in the run.
+#
+# The diff is written to a file under .git so a lens reads instead of running git,
+# and so it cannot be committed by accident.
+set -euo pipefail
+
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CFG="$BIN_DIR/funnel-config"
+REPO_ROOT="$("$CFG" root)"
+OUT="$(git rev-parse --absolute-git-dir)/claude-kit/review"
+mkdir -p "$OUT"
+
+die() { printf '%s\n' "$*" >&2; exit 1; }
+
+since=""
+args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --since) since="$2"; shift 2 ;;
+    *) args+=("$1"); shift ;;
+  esac
+done
+set -- ${args[@]+"${args[@]}"}
+
+slice_range() {
+  local spec="$1"
+  # A fix round reviews the fix, not the branch again. Same paths, new range.
+  if [ -n "$since" ]; then
+    printf '%s' "${spec/#*...HEAD/$since..HEAD}"
+  else
+    printf '%s' "$spec"
+  fi
+}
+
+write_named_slice() {
+  local name="$1" spec range file
+  spec="$("$CFG" get ".slices.\"$name\"")"
+  [ -n "$spec" ] || die "no slice named \"$name\""
+  range="$(slice_range "$spec")"
+  file="$OUT/slice-$name.diff"
+  # shellcheck disable=SC2086
+  ( cd "$REPO_ROOT" && eval "git diff --stat=200 $range && echo && git diff -U8 $range" ) >"$file"
+  printf '%s' "$file"
+}
+
+write_slice() {
+  local name
+  name="$("$CFG" get ".lenses.\"$1\".slice")"
+  [ -n "$name" ] || die "lens \"$1\" names no slice"
+  write_named_slice "$name"
+}
+
+# Prose that this change may have falsified. Candidates, not findings: the tokens
+# are declaration names and multi-digit literals from the changed lines, which is
+# how a comment keeps claiming 16 MB after the code moved to 1 MB.
+claims_candidates() {
+  local spec range tokens targets
+  spec="$("$CFG" get '.slices.all')"
+  range="$(slice_range "$spec")"
+  tokens="$( cd "$REPO_ROOT" && eval "git diff -U0 $range" \
+    | grep -E '^[+-]' | grep -Ev '^(\+\+\+|---)' \
+    | grep -oE '(function|const|let|class|type|interface|enum|def|func) +[A-Za-z_][A-Za-z0-9_]*|[0-9]{2,}' \
+    | awk '{print $NF}' | sort -u | grep -Ev '^(0+|1[0-9]{3}|20[0-9]{2})$' | head -40 )"
+  [ -n "$tokens" ] || return 0
+  targets="$("$CFG" get '.lenses.claims.grepTargets[]?' | tr '\n' ' ')"
+  [ -n "$targets" ] || return 0
+  ( cd "$REPO_ROOT" && printf '%s\n' "$tokens" \
+      | while IFS= read -r t; do
+          [ -z "$t" ] && continue
+          grep -rInF --exclude-dir=node_modules -- "$t" $targets 2>/dev/null | head -4
+        done ) | sort -u | head -60
+}
+
+case "${1:-}" in
+  --disjoint)
+    a="${2:?}"; b="${3:?}"
+    fa="$(mktemp)"; fb="$(mktemp)"
+    sa="$("$CFG" get ".slices.\"$("$CFG" get ".lenses.\"$a\".slice")\"")"
+    sb="$("$CFG" get ".slices.\"$("$CFG" get ".lenses.\"$b\".slice")\"")"
+    ( cd "$REPO_ROOT" && eval "git diff --name-only $(slice_range "$sa")" ) | sort >"$fa"
+    ( cd "$REPO_ROOT" && eval "git diff --name-only $(slice_range "$sb")" ) | sort >"$fb"
+    overlap="$(comm -12 "$fa" "$fb")"
+    printf '%s: %s file(s)\n%s: %s file(s)\n' "$a" "$(wc -l <"$fa")" "$b" "$(wc -l <"$fb")"
+    if [ -z "$overlap" ]; then
+      printf 'disjoint, safe to run in parallel\n'
+    else
+      printf 'OVERLAP:\n%s\n' "$overlap"
+    fi
+    rm -f "$fa" "$fb"
+    ;;
+
+  --plan)
+    level="${2:?usage: review-package --plan <light|standard|deep>}"
+    lenses="$("$CFG" get ".effort.\"$level\"[]?")"
+    [ -n "$lenses" ] || die "no effort level \"$level\" in the config"
+    printf 'effort %s%s\n\n' "$level" "${since:+, fix round since ${since:0:8}}"
+    for l in $lenses; do
+      f="$(write_slice "$l")"
+      lines="$(grep -c '^[+-]' "$f" || true)"
+      printf '%-14s %s\n%-14s %s changed line(s)\n' "$l" "$f" "" "$lines"
+    done
+    printf '\nmax %s concurrent dispatches (config maxParallelAgents)\n' "$("$CFG" get .maxParallelAgents)"
+    ;;
+
+  # One dispatch per slice, carrying every lens that reads that slice as a
+  # numbered part of one contract. Fan-out per lens was measured and removed:
+  # two reviewer prompts fused into one that returns "Part 1 spec conformity,
+  # Part 2 code quality" from a single read of the same diff ran twice as fast
+  # for about half the tokens. Grouping by slice is the version of that finding
+  # that keeps independent contexts where the material actually differs.
+  --dispatches)
+    level="${2:?usage: review-package --dispatches <light|standard|deep>}"
+    lenses="$("$CFG" get ".effort.\"$level\"[]?")"
+    [ -n "$lenses" ] || die "no effort level \"$level\" in the config"
+    slices=""
+    for l in $lenses; do
+      s="$("$CFG" get ".lenses.\"$l\".slice")"
+      printf '%s\n' "$slices" | grep -qxF "$s" || slices="$slices$s"$'\n'
+    done
+    n=0
+    printf 'effort %s%s\n' "$level" "${since:+, fix round since ${since:0:8}}"
+    for s in $slices; do
+      [ -z "$s" ] && continue
+      n=$((n + 1))
+      group="" docs=""
+      for l in $lenses; do
+        [ "$("$CFG" get ".lenses.\"$l\".slice")" = "$s" ] || continue
+        group="$group $l"
+        while IFS= read -r d; do
+          [ -z "$d" ] && continue
+          printf '%s\n' "$docs" | grep -qxF "$d" || docs="$docs$d"$'\n'
+        done < <("$CFG" get ".lenses.\"$l\".docs[]?")
+      done
+      f="$(write_named_slice "$s")"
+      lines="$(grep -c '^[+-]' "$f" || true)"
+      docbytes=0
+      for d in $docs; do
+        [ -f "$REPO_ROOT/$d" ] && docbytes=$((docbytes + $(wc -c <"$REPO_ROOT/$d")))
+      done
+      printf '\ndispatch %s   parts:%s\n' "$n" "$group"
+      printf '  diff  %s  (%s changed lines)\n' "$f" "$lines"
+      if [ -n "${docs// /}" ]; then
+        printf '  read  %s  (%s bytes)\n' "$(printf '%s' "$docs" | tr '\n' ' ')" "$docbytes"
+      else
+        printf '  read  nothing beyond the diff\n'
+      fi
+      case " $group " in
+        *" claims "*)
+          printf '  prose candidates (grep-precomputed):\n'
+          c="$(claims_candidates)"
+          if [ -n "$c" ]; then printf '%s\n' "$c" | sed 's/^/    /'; else printf '    none matched\n'; fi
+          ;;
+      esac
+    done
+    printf '\n%s dispatch(es), max %s concurrent\n' "$n" "$("$CFG" get .maxParallelAgents)"
+    ;;
+
+  "" ) die "usage: review-package --plan <level> | <lens> | --disjoint <a> <b>" ;;
+
+  *)
+    lens="$1"
+    "$CFG" lens "$lens" >/dev/null
+    file="$(write_slice "$lens")"
+    lines="$(grep -c '^[+-]' "$file" || true)"
+    printf 'lens     %s\n' "$lens"
+    printf 'diff     %s   (%s changed lines, already written, do not run git)\n' "$file" "$lines"
+    docs="$("$CFG" get ".lenses.\"$lens\".docs[]?" | tr '\n' ' ')"
+    if [ -n "${docs// /}" ]; then
+      printf 'read     %s\n' "$docs"
+    else
+      printf 'read     nothing beyond the diff\n'
+    fi
+    if [ "$lens" = claims ]; then
+      printf 'prose candidates (grep-precomputed, verify each against the code as committed):\n'
+      c="$(claims_candidates)"
+      if [ -n "$c" ]; then printf '%s\n' "$c"; else printf '  none matched\n'; fi
+    fi
+    ;;
+esac

@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+# Worktree lifecycle, including the teardown that never happens on its own.
+#
+#   worktree add <issue> <slug> [--kind feature|bug|refactor|chore] [--doc-only]
+#   worktree rm [<path-or-issue>] [--force]
+#   worktree gc [--yes]        remove only the ones provably finished
+#   worktree list              with disk size and why each one is still here
+#
+# The teardown step is one command, is written in two places, and was skipped
+# every time a run ended in a report: 27 orphans and 33 GB in the repository this
+# came from. So `gc` decides safety from git and the pull request state instead of
+# from memory, and refuses anything with work in it.
+set -euo pipefail
+
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CFG="$BIN_DIR/funnel-config"
+REPO_ROOT="$("$CFG" root)"
+BASE="$("$CFG" get .base)"
+
+die() { printf '%s\n' "$*" >&2; exit 1; }
+
+# du over 27 checkouts of 1.3 GB each is 18 seconds of I/O on a spinning-plate
+# WSL mount, and the size only matters when the point is reclaiming disk.
+FAST="${FUNNEL_FAST:-0}"
+size_of() { [ "$FAST" = 1 ] && { printf '  -   '; return; }; du -sh "$1" 2>/dev/null | cut -f1; }
+
+main_root() { git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir | xargs dirname; }
+
+# Everything git knows about the worktrees, one record per line.
+each_worktree() {
+  git -C "$REPO_ROOT" worktree list --porcelain \
+    | awk '/^worktree /{p=$2} /^branch /{sub("refs/heads/","",$2); print p" "$2} /^detached/{print p" DETACHED"}'
+}
+
+# FINISHED means every commit and every edit in this worktree is provably
+# reachable from the remote. The order of these tests is the whole safety
+# argument, so it does not get reshuffled for brevity:
+#
+#   1. uncommitted changes always win. A merged pull request says nothing about
+#      an edit that was never committed.
+#   2. ancestry in the base branch is the strongest proof there is, needs no
+#      network, and does not care what the tracker thinks.
+#   3. a merged pull request only covers the head it merged. A squash merge
+#      leaves the local commits unreachable from the base branch, so the merged
+#      state alone is not proof and comparing against the pull request's
+#      headRefOid is what distinguishes "this exact tree landed" from "something
+#      shaped like it did". A head this repository has never fetched proves
+#      nothing either: KEEP, and say why.
+state_of() {
+  local path="$1" branch="$2"
+  [ -n "$(git -C "$path" status --porcelain 2>/dev/null)" ] && { printf 'KEEP uncommitted changes'; return; }
+  [ "$branch" = DETACHED ] && { printf 'KEEP detached head'; return; }
+
+  if git -C "$path" merge-base --is-ancestor HEAD "origin/$BASE" 2>/dev/null; then
+    printf 'FINISHED head is in %s' "$BASE"
+    return
+  fi
+
+  local pr="" state="" num="" head_oid=""
+  if command -v gh >/dev/null; then
+    pr="$(gh pr list --head "$branch" --state all --limit 1 \
+          --json state,number,headRefOid --jq '.[0] | select(.) | "\(.state) \(.number) \(.headRefOid)"' 2>/dev/null || true)"
+  fi
+  local ahead
+  ahead="$(git -C "$path" rev-list --count "origin/$BASE..HEAD" 2>/dev/null || echo '?')"
+  if [ -n "$pr" ]; then
+    read -r state num head_oid <<<"$pr"
+    case "$state" in
+      OPEN) printf 'KEEP pr #%s open' "$num"; return ;;
+      MERGED|CLOSED)
+        if [ "$(git -C "$path" rev-parse HEAD)" = "$head_oid" ]; then
+          printf 'FINISHED pr #%s %s at this exact head' "$num" "$(printf '%s' "$state" | tr 'A-Z' 'a-z')"
+        elif ! git -C "$path" cat-file -e "$head_oid" 2>/dev/null; then
+          printf 'KEEP pr #%s %s at %s, which this repo has never fetched, so the %s local commit(s) cannot be proven contained' \
+            "$num" "$(printf '%s' "$state" | tr 'A-Z' 'a-z')" "${head_oid:0:8}" "$ahead"
+        else
+          printf 'KEEP %s commit(s) past the head pr #%s %s' \
+            "$(git -C "$path" rev-list --count "$head_oid..HEAD" 2>/dev/null || echo '?')" "$num" \
+            "$(printf '%s' "$state" | tr 'A-Z' 'a-z')"
+        fi
+        return ;;
+    esac
+  fi
+  printf 'KEEP %s commit(s) not in %s, no pr' "$ahead" "$BASE"
+}
+
+cmd="${1:-list}"; shift || true
+
+case "$cmd" in
+  add)
+    issue="${1:-}"; slug="${2:-}"
+    [ -n "$issue" ] && [ -n "$slug" ] || die "usage: worktree add <issue> <slug> [--kind feature] [--doc-only]"
+    shift 2
+    kind=feature doc_only=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --kind) kind="$2"; shift 2 ;;
+        --doc-only) doc_only=1; shift ;;
+        *) die "unknown flag: $1" ;;
+      esac
+    done
+    prefix="$("$CFG" get ".branch.prefix.$kind")"
+    [ -n "$prefix" ] || die "no branch prefix for kind \"$kind\""
+    pattern="$("$CFG" get .branch.pattern)"
+    branch="${pattern//\{prefix\}/$prefix}"; branch="${branch//\{issue\}/$issue}"; branch="${branch//\{slug\}/$slug}"
+    path="$(FUNNEL_ISSUE="$issue" FUNNEL_SLUG="$slug" "$CFG" get .worktree.path)"
+    case "$path" in /*) abs="$path" ;; *) abs="$(main_root)/$path" ;; esac
+
+    [ -e "$abs" ] && die "$abs already exists; worktree list says what is in it"
+    git -C "$REPO_ROOT" fetch --quiet origin "$BASE"
+    git -C "$REPO_ROOT" worktree add -b "$branch" "$abs" "origin/$BASE"
+    printf 'worktree %s\nbranch   %s\n' "$abs" "$branch"
+
+    if [ "$doc_only" = 1 ] && [ "$("$CFG" get .worktree.skipSetupWhenDocOnly)" = true ]; then
+      printf 'setup    skipped, doc-only scope\n'
+    else
+      while IFS= read -r step; do
+        [ -z "$step" ] && continue
+        printf 'setup    %s\n' "$step"
+        ( cd "$abs" && eval "$step" ) || { git -C "$REPO_ROOT" worktree remove --force "$abs"; die "setup failed, worktree removed"; }
+      done < <("$CFG" get '.worktree.setup[]?')
+    fi
+    ;;
+
+  rm)
+    target="${1:-$PWD}"; force=""
+    [ "${2:-}" = --force ] && force=--force
+    if [ ! -d "$target" ]; then
+      # Accept an issue number and find the worktree whose branch carries it.
+      found="$(each_worktree | awk -v n="$target" '$2 ~ ("/" n "-") || $2 ~ ("-" n "$") {print $1; exit}')"
+      [ -n "$found" ] || die "no worktree matches \"$target\""
+      target="$found"
+    fi
+    target="$(cd "$target" && pwd)"
+    [ "$target" = "$(main_root)" ] && die "that is the main checkout, not a worktree"
+    state="$(state_of "$target" "$(each_worktree | awk -v p="$target" '$1==p{print $2}')")"
+    case "$state" in
+      KEEP*) [ -n "$force" ] || die "refusing: $state (pass --force if you mean it)" ;;
+    esac
+    size="$(size_of "$target")"
+    git -C "$(main_root)" worktree remove ${force:+--force} "$target"
+    printf 'removed %s (%s freed) [%s]\n' "$target" "$size" "$state"
+    ;;
+
+  gc)
+    yes=0
+    for a in "$@"; do
+      case "$a" in --yes) yes=1 ;; --fast) FAST=1 ;; esac
+    done
+    total=0 removed=0
+    while IFS= read -r rec; do
+      path="${rec%% *}"; branch="${rec##* }"
+      [ "$path" = "$(main_root)" ] && continue
+      total=$((total + 1))
+      state="$(state_of "$path" "$branch")"
+      size="$(size_of "$path")"
+      case "$state" in
+        FINISHED*)
+          if [ $yes -eq 1 ]; then
+            git -C "$(main_root)" worktree remove --force "$path" && removed=$((removed + 1))
+            printf 'removed  %-40s %6s  %s\n' "$(basename "$path")" "$size" "$state"
+          else
+            printf 'would rm %-40s %6s  %s\n' "$(basename "$path")" "$size" "$state"
+          fi
+          ;;
+        *) printf 'keep     %-40s %6s  %s\n' "$(basename "$path")" "$size" "$state" ;;
+      esac
+    done < <(each_worktree)
+    git -C "$REPO_ROOT" worktree prune
+    if [ $yes -eq 1 ]; then
+      printf '\n%s of %s removed\n' "$removed" "$total"
+    else
+      printf '\n%s worktree(s); nothing removed, pass --yes\n' "$total"
+    fi
+    ;;
+
+  list)
+    [ "${1:-}" = --fast ] && FAST=1
+    while IFS= read -r rec; do
+      path="${rec%% *}"; branch="${rec##* }"
+      size="$(size_of "$path")"
+      if [ "$path" = "$(main_root)" ]; then
+        printf '%-40s %6s  main checkout\n' "$(basename "$path")" "$size"
+      else
+        printf '%-40s %6s  %s\n' "$(basename "$path")" "$size" "$(state_of "$path" "$branch")"
+      fi
+    done < <(each_worktree)
+    ;;
+
+  *) die "unknown command: $cmd (add|rm|gc|list)" ;;
+esac

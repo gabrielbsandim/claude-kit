@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# One port, three adapters. The funnel knows the words "in_progress" and
+# "in_review" and nothing about any tracker.
+#
+#   board-move in_progress --issue 510
+#   board-move in_review --issue 510
+#   board-move --discover            print the ids to paste into board.json
+#   board-move --where --issue 510   what the tracker says the status is now
+#
+# Config: the path in `.board` of funnel.config.json, default .claude/board.json.
+# Providers: github-projects-v2 (verified), jira (unverified, see below),
+# azure-devops (unverified), none.
+#
+# The funnel never writes a Done column. Merging is a human decision, and the
+# native GitHub / Jira automations already own that transition.
+set -euo pipefail
+
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CFG="$BIN_DIR/funnel-config"
+REPO_ROOT="$("$CFG" root)"
+
+die() { printf '%s\n' "$*" >&2; exit 1; }
+note() { printf '%s\n' "$*" >&2; }
+
+board_path="$("$CFG" get .board)"
+[ -n "$board_path" ] || board_path=".claude/board.json"
+case "$board_path" in
+  /*) BOARD="$board_path" ;;
+  *)  BOARD="$("$CFG" configdir)/$board_path" ;;
+esac
+
+issue="" action=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --issue) issue="$2"; shift 2 ;;
+    --discover) action=discover; shift ;;
+    --where) action=where; shift ;;
+    -*) die "unknown flag: $1" ;;
+    *) action=move; status="$1"; shift ;;
+  esac
+done
+[ -n "$action" ] || die "usage: board-move <status> --issue N | --discover | --where --issue N"
+
+owner_repo() {
+  if [ -f "$BOARD" ]; then
+    local o r
+    o="$(jq -r '.owner // empty' "$BOARD")"; r="$(jq -r '.repo // empty' "$BOARD")"
+    [ -n "$o" ] && [ -n "$r" ] && { printf '%s %s' "$o" "$r"; return; }
+  fi
+  gh repo view --json owner,name --jq '"\(.owner.login) \(.name)"'
+}
+
+# ---------------------------------------------------------------- discover
+if [ "$action" = discover ]; then
+  read -r owner repo <<<"$(owner_repo)"
+  command -v gh >/dev/null || die "--discover needs the gh CLI"
+  note "reading projects linked to $owner/$repo"
+  gh api graphql -f owner="$owner" -f repo="$repo" -f query='
+    query($owner:String!,$repo:String!){
+      repository(owner:$owner,name:$repo){
+        projectsV2(first:10){ nodes{
+          id title number
+          fields(first:40){ nodes{
+            ... on ProjectV2SingleSelectField { id name options { id name } }
+          } }
+        } }
+      }
+    }' --jq '
+    .data.repository.projectsV2.nodes[] |
+    "project \(.number)  \(.title)\n  projectId      \(.id)\n" +
+    ( [ .fields.nodes[] | select(.name != null) |
+        "  field \(.name)\n    statusFieldId  \(.id)\n" +
+        ( [ .options[] | "    \(.name | ascii_downcase | gsub(" ";"_"))  \(.id)" ] | join("\n") )
+      ] | join("\n") )'
+  printf '\nPaste the ones you use into %s, keys in_progress and in_review.\n' "$BOARD"
+  exit 0
+fi
+
+[ -f "$BOARD" ] || { note "no $board_path, skipping the board move"; exit 0; }
+provider="$(jq -r '.provider // "none"' "$BOARD")"
+[ -n "$issue" ] || die "--issue is required"
+
+# ---------------------------------------------------------------- github
+gh_item_id() {
+  local owner repo project_id
+  read -r owner repo <<<"$(owner_repo)"
+  project_id="$(jq -r '.projectId' "$BOARD")"
+  gh api graphql -f owner="$owner" -f repo="$repo" -F number="$issue" -f query='
+    query($owner:String!,$repo:String!,$number:Int!){
+      repository(owner:$owner,name:$repo){
+        issueOrPullRequest(number:$number){
+          ... on Issue { projectItems(first:20){ nodes{ id project{ id } } } }
+          ... on PullRequest { projectItems(first:20){ nodes{ id project{ id } } } }
+        }
+      }
+    }' --jq ".data.repository.issueOrPullRequest.projectItems.nodes[] | select(.project.id==\"$project_id\") | .id"
+}
+
+case "$provider" in
+  github-projects-v2)
+    command -v gh >/dev/null || die "provider github-projects-v2 needs the gh CLI"
+    project_id="$(jq -r '.projectId' "$BOARD")"
+    field_id="$(jq -r '.statusFieldId' "$BOARD")"
+    item_id="$(gh_item_id)"
+    if [ -z "$item_id" ]; then
+      note "issue #$issue is not on project $project_id, adding it"
+      content_id="$(gh api graphql -f owner="$(owner_repo | cut -d' ' -f1)" -f repo="$(owner_repo | cut -d' ' -f2)" -F number="$issue" -f query='
+        query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){issue(number:$number){id}}}' \
+        --jq '.data.repository.issue.id')"
+      item_id="$(gh api graphql -f project="$project_id" -f content="$content_id" -f query='
+        mutation($project:ID!,$content:ID!){addProjectV2ItemById(input:{projectId:$project,contentId:$content}){item{id}}}' \
+        --jq '.data.addProjectV2ItemById.item.id')"
+    fi
+
+    if [ "$action" = where ]; then
+      gh api graphql -f item="$item_id" -f query='
+        query($item:ID!){ node(id:$item){ ... on ProjectV2Item {
+          fieldValues(first:20){ nodes{ ... on ProjectV2ItemFieldSingleSelectValue { name field { ... on ProjectV2SingleSelectField { name } } } } } } } }' \
+        --jq '.data.node.fieldValues.nodes[] | select(.name != null) | "\(.field.name): \(.name)"'
+      exit 0
+    fi
+
+    option_id="$(jq -r --arg s "$status" '.columns[$s] // empty' "$BOARD")"
+    [ -n "$option_id" ] || die "no column \"$status\" in $board_path (has: $(jq -r '.columns|keys|join(", ")' "$BOARD"))"
+    gh api graphql -f project="$project_id" -f item="$item_id" -f field="$field_id" -f value="$option_id" -f query='
+      mutation($project:ID!,$item:ID!,$field:ID!,$value:String!){
+        updateProjectV2ItemFieldValue(input:{projectId:$project,itemId:$item,fieldId:$field,value:{singleSelectOptionId:$value}}){
+          projectV2Item{ id } } }' --jq '.data.updateProjectV2ItemFieldValue.projectV2Item.id' >/dev/null
+    printf 'board    #%s -> %s\n' "$issue" "$status"
+    ;;
+
+  jira)
+    # UNVERIFIED: written from the REST v3 contract, never run against a real
+    # instance from this machine. Where an Atlassian MCP server is registered,
+    # prefer it and delete this branch.
+    base="$(jq -r '.baseUrl' "$BOARD")"
+    key="$issue"
+    case "$key" in *-*) ;; *) key="$(jq -r '.projectKey' "$BOARD")-$issue" ;; esac
+    if [ -z "${JIRA_EMAIL:-}" ] || [ -z "${JIRA_API_TOKEN:-}" ]; then
+      note "no JIRA_EMAIL / JIRA_API_TOKEN in the environment."
+      note "Use the Atlassian MCP instead: transition $key to \"$status\". Not moving the board here."
+      exit 0
+    fi
+    auth="$(printf '%s:%s' "$JIRA_EMAIL" "$JIRA_API_TOKEN" | base64 -w0)"
+    if [ "$action" = where ]; then
+      curl -sS -H "Authorization: Basic $auth" "$base/rest/api/3/issue/$key?fields=status" \
+        | jq -r '"status: \(.fields.status.name)"'
+      exit 0
+    fi
+    tid="$(jq -r --arg s "$status" '.transitions[$s] // empty' "$BOARD")"
+    if [ -z "$tid" ]; then
+      note "no transition id for \"$status\"; available now:"
+      curl -sS -H "Authorization: Basic $auth" "$base/rest/api/3/issue/$key/transitions" \
+        | jq -r '.transitions[] | "  \(.id)  \(.name) -> \(.to.name)"' >&2
+      exit 1
+    fi
+    curl -sS -X POST -H "Authorization: Basic $auth" -H 'Content-Type: application/json' \
+      -d "{\"transition\":{\"id\":\"$tid\"}}" "$base/rest/api/3/issue/$key/transitions" >/dev/null
+    printf 'board    %s -> %s\n' "$key" "$status"
+    ;;
+
+  azure-devops)
+    # UNVERIFIED: neither az nor the ADO MCP exists on the machine this was
+    # written on. Needs `az extension add --name azure-devops` once.
+    org="$(jq -r '.organization' "$BOARD")"
+    project="$(jq -r '.project' "$BOARD")"
+    if ! command -v az >/dev/null; then
+      note "az not installed. Use the Azure DevOps MCP instead: set work item $issue to \"$status\"."
+      exit 0
+    fi
+    if [ "$action" = where ]; then
+      az boards work-item show --id "$issue" --org "$org" --query 'fields."System.State"' -o tsv
+      exit 0
+    fi
+    state="$(jq -r --arg s "$status" '.states[$s] // empty' "$BOARD")"
+    [ -n "$state" ] || die "no state mapped for \"$status\" in $board_path"
+    az boards work-item update --id "$issue" --state "$state" --org "$org" --project "$project" -o none
+    printf 'board    %s -> %s (%s)\n' "$issue" "$status" "$state"
+    ;;
+
+  none) note "board provider is \"none\", nothing to move" ;;
+
+  *) die "unknown provider: $provider" ;;
+esac

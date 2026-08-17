@@ -1,0 +1,11 @@
+{
+  "provider": "github-projects-v2",
+  "owner": "OWNER",
+  "repo": "REPO",
+  "projectId": "PVT_xxxxxxxx",
+  "statusFieldId": "PVTSSF_xxxxxxxx",
+  "columns": {
+    "in_progress": "00000000",
+    "in_review": "00000000"
+  }
+}

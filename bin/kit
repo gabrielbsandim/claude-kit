@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Single entry point, so nothing that runs during a task has to know where the
+# plugin was installed. Every subcommand is a sibling script.
+#
+#   kit config check           validate this repo's funnel config
+#   kit gate <stage>           run a stage's gates, with receipts
+#   kit worktree gc            remove the provably finished worktrees
+#   kit review <level>         the grouped review dispatch plan
+#   kit board <status> --issue N
+#   kit doctor                 is this machine ready
+#   kit setup                  put `kit` on PATH
+set -euo pipefail
+
+KIT_BIN="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+KIT_ROOT="$(dirname "$KIT_BIN")"
+
+usage() { awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$KIT_BIN/kit"; }
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  config)   exec "$KIT_BIN/funnel-config" "$@" ;;
+  gate)     exec "$KIT_BIN/gate" "$@" ;;
+  worktree) exec "$KIT_BIN/worktree" "$@" ;;
+  board)    exec "$KIT_BIN/board-move" "$@" ;;
+  review)
+    # `kit review standard` is the common case; anything starting with - passes through.
+    case "${1:-}" in
+      -*|"") exec "$KIT_BIN/review-package" "$@" ;;
+      *) exec "$KIT_BIN/review-package" --dispatches "$@" ;;
+    esac
+    ;;
+
+  setup)
+    target="${1:-$HOME/.local/bin}"
+    mkdir -p "$target"
+    ln -sf "$KIT_BIN/kit" "$target/kit"
+    printf 'linked %s -> %s\n' "$target/kit" "$KIT_BIN/kit"
+    case ":$PATH:" in
+      *":$target:"*) printf 'PATH already contains %s\n' "$target" ;;
+      *) printf 'Add this to your shell profile:\n  export PATH="%s:$PATH"\n' "$target" ;;
+    esac
+    ;;
+
+  doctor)
+    status=0
+    printf 'kit      %s\n' "$KIT_ROOT"
+    for c in git jq; do
+      if command -v "$c" >/dev/null; then printf '%-8s %s\n' "$c" "$(command -v "$c")"
+      else printf '%-8s MISSING, required\n' "$c" >&2; status=1; fi
+    done
+    for c in gh az curl; do
+      if command -v "$c" >/dev/null; then printf '%-8s %s\n' "$c" "$(command -v "$c")"
+      else printf '%-8s not installed, only needed by its board adapter\n' "$c"; fi
+    done
+    if command -v gh >/dev/null; then
+      if gh auth status >/dev/null 2>&1; then
+        scopes="$(gh auth status 2>&1 | sed -n 's/.*Token scopes: //p' | head -1)"
+        printf 'gh auth  ok, scopes %s\n' "$scopes"
+        case "$scopes" in
+          *project*) ;;
+          *) printf 'gh auth  no "project" scope, GitHub Projects moves will fail: gh auth refresh -s project\n' >&2; status=1 ;;
+        esac
+      else
+        printf 'gh auth  not logged in\n' >&2; status=1
+      fi
+    fi
+    if git rev-parse --show-toplevel >/dev/null 2>&1; then
+      printf '\nrepo     %s\n' "$("$KIT_BIN/funnel-config" root)"
+      "$KIT_BIN/funnel-config" check || status=1
+    else
+      printf '\nnot inside a git repository, so the repo half of the check is skipped\n'
+    fi
+    exit $status
+    ;;
+
+  ""|-h|--help|help) usage ;;
+  *) printf 'unknown subcommand: %s\n\n' "$cmd" >&2; usage >&2; exit 1 ;;
+esac

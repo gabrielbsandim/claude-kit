@@ -1,0 +1,235 @@
+#!/usr/bin/env bash
+# Resolves the per-repo funnel config. Every other script in bin/ reads the repo
+# through this one, so a repo is configured in exactly one file and no script
+# carries a path or a command of its own.
+#
+#   funnel-config                 merged config as JSON
+#   funnel-config get <jq-path>   one resolved value, e.g. get .gates.test.cmd
+#   funnel-config gates <stage>   gate names for a stage, one per line
+#   funnel-config lens <name>     the lens object, resolved
+#   funnel-config init            write .claude/funnel.config.json from the template
+#   funnel-config check           validate the config against this repo
+#
+# Placeholders resolved in every string value: {base} {repo} {issue} {slug}.
+# {issue} and {slug} come from $FUNNEL_ISSUE and $FUNNEL_SLUG when set.
+set -euo pipefail
+
+KIT_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# A worktree only contains tracked files, so a config that has not been committed
+# yet is invisible from inside the very place the funnel runs. Falling back to the
+# main checkout means a repo can be configured before the config is committed, and
+# means one local-only config covers every worktree of that repo.
+MAIN_ROOT="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null | xargs -r dirname || true)"
+CONFIG_PATH="$REPO_ROOT/.claude/funnel.config.json"
+if [ ! -f "$CONFIG_PATH" ] && [ -n "$MAIN_ROOT" ] && [ -f "$MAIN_ROOT/.claude/funnel.config.json" ]; then
+  CONFIG_PATH="$MAIN_ROOT/.claude/funnel.config.json"
+fi
+
+die() { printf '%s\n' "$*" >&2; exit 1; }
+command -v jq >/dev/null || die "funnel-config needs jq"
+
+# Defaults exist so a repo with no config still runs the funnel. They are
+# deliberately thin: a wrong guess must fail loudly at the gate rather than
+# quietly review the wrong slice.
+detect_pm() {
+  [ -f "$REPO_ROOT/pnpm-lock.yaml" ] && { echo pnpm; return; }
+  [ -f "$REPO_ROOT/yarn.lock" ] && { echo yarn; return; }
+  echo npm
+}
+
+detect_base() {
+  local ref
+  ref="$(git -C "$REPO_ROOT" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)"
+  if [ -n "$ref" ]; then
+    printf '%s' "${ref##*/}"
+    return
+  fi
+  for candidate in develop main master; do
+    if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/remotes/origin/$candidate"; then
+      printf '%s' "$candidate"
+      return
+    fi
+  done
+  printf 'main'
+}
+
+defaults_json() {
+  local pm base
+  pm="$(detect_pm)"
+  base="$(detect_base)"
+  jq -n --arg pm "$pm" --arg base "$base" '
+    {
+      base: $base,
+      docs: { entry: "AGENTS.md" },
+      branch: {
+        pattern: "{prefix}/{issue}-{slug}",
+        prefix: { feature: "feat", bug: "fix", refactor: "refactor", chore: "chore" }
+      },
+      worktree: { path: "../{repo}-{issue}", setup: [($pm + " install")], skipSetupWhenDocOnly: true },
+      gates: {
+        lint:  { cmd: ($pm + " run lint") },
+        types: { cmd: "npx tsc --noEmit" },
+        test:  { cmd: ($pm + " test") }
+      },
+      stages: {
+        implement_first_pass: ["lint","types","test"],
+        implement_fix_round:  ["types","test"],
+        tests: ["test"],
+        ship:  ["lint","types","test"]
+      },
+      slices: { src: "{base}...HEAD", all: "{base}...HEAD" },
+      lenses: { correctness: { slice: "src", docs: [] } },
+      effort: { light: ["correctness"], standard: ["correctness"], deep: ["correctness"] },
+      maxRounds: 2,
+      maxParallelAgents: 3,
+      flaky: [],
+      board: ".claude/board.json"
+    }'
+}
+
+merged() {
+  local d
+  d="$(defaults_json)"
+  if [ -f "$CONFIG_PATH" ]; then
+    jq -e . "$CONFIG_PATH" >/dev/null 2>&1 || die "$CONFIG_PATH is not valid JSON"
+    # Shallow-merge per top-level key, then deep-merge the object-valued ones.
+    # A repo that names three gates gets three gates, not three plus the guesses:
+    # for gates, stages, slices, lenses and effort the repo value replaces the
+    # default outright. Anything else merges, so `base` alone is a valid config.
+    jq -s '
+      def replace_keys: ["gates","stages","slices","lenses","effort","flaky"];
+      .[0] as $d | .[1] as $r
+      | ($d * ($r | with_entries(select(.key | IN(replace_keys[]) | not))))
+      + ($r | with_entries(select(.key | IN(replace_keys[]))))
+    ' <(printf '%s' "$d") "$CONFIG_PATH"
+  else
+    printf '%s' "$d"
+  fi
+}
+
+resolve() {
+  local repo base
+  repo="$(basename "$REPO_ROOT")"
+  base="$(merged | jq -r '.base')"
+  jq --arg base "$base" --arg repo "$repo" \
+     --arg issue "${FUNNEL_ISSUE:-}" --arg slug "${FUNNEL_SLUG:-}" '
+    def subst:
+      if type == "string" then
+        gsub("\\{base\\}"; $base) | gsub("\\{repo\\}"; $repo)
+        | gsub("\\{issue\\}"; $issue) | gsub("\\{slug\\}"; $slug)
+      elif type == "array" then map(subst)
+      elif type == "object" then with_entries(.value |= subst)
+      else . end;
+    subst'
+}
+
+KNOWN_KEYS='["$schema","base","docs","branch","worktree","gates","stages","slices","lenses","effort","maxRounds","maxParallelAgents","flaky","board"]'
+
+cmd="${1:-print}"
+case "$cmd" in
+  print) merged | resolve ;;
+
+  raw) merged ;;
+
+  get)
+    [ $# -ge 2 ] || die "usage: funnel-config get <jq-path>"
+    merged | resolve | jq -r "$2 // empty"
+    ;;
+
+  gates)
+    [ $# -ge 2 ] || die "usage: funnel-config gates <stage>"
+    merged | resolve | jq -r --arg s "$2" '.stages[$s][]? // empty'
+    ;;
+
+  lens)
+    [ $# -ge 2 ] || die "usage: funnel-config lens <name>"
+    merged | resolve | jq -e --arg l "$2" '.lenses[$l]' \
+      || die "no lens \"$2\" in the config; funnel-config get .lenses lists them"
+    ;;
+
+  path) printf '%s\n' "$CONFIG_PATH" ;;
+
+  # Where relative paths in the config resolve from: the checkout that owns it.
+  configdir) printf '%s\n' "$(dirname "$(dirname "$CONFIG_PATH")")" ;;
+
+  root) printf '%s\n' "$REPO_ROOT" ;;
+
+  init)
+    mkdir -p "$REPO_ROOT/.claude"
+    [ -f "$CONFIG_PATH" ] && die "$CONFIG_PATH already exists"
+    cp "$KIT_ROOT/templates/funnel.config.json" "$CONFIG_PATH"
+    printf 'wrote %s\nEdit it, then run: funnel-config check\n' "$CONFIG_PATH"
+    ;;
+
+  check)
+    status=0
+    if [ -f "$CONFIG_PATH" ]; then
+      printf 'config   %s\n' "$CONFIG_PATH"
+    else
+      printf 'config   none, using defaults (%s, base %s)\n' "$(detect_pm)" "$(detect_base)"
+    fi
+    unknown="$(merged | jq -r --argjson known "$KNOWN_KEYS" 'keys - $known | .[]')"
+    if [ -n "$unknown" ]; then
+      printf 'unknown key(s): %s\n' "$(printf '%s' "$unknown" | tr '\n' ' ')" >&2
+      status=1
+    fi
+
+    base="$(merged | jq -r .base)"
+    if git -C "$REPO_ROOT" rev-parse --verify --quiet "refs/remotes/origin/$base" >/dev/null; then
+      printf 'base     origin/%s ok\n' "$base"
+    else
+      printf 'base     origin/%s does not exist\n' "$base" >&2
+      status=1
+    fi
+
+    while IFS= read -r doc; do
+      [ -z "$doc" ] && continue
+      if [ -f "$REPO_ROOT/$doc" ]; then
+        printf 'doc      %s ok\n' "$doc"
+      else
+        printf 'doc      %s missing\n' "$doc" >&2
+        status=1
+      fi
+    done < <(merged | jq -r '(.docs // {}) | to_entries[] | .value')
+
+    # Every lens must name a slice that exists, or its dispatch reviews nothing.
+    while IFS= read -r pair; do
+      lens="${pair%% *}"; slice="${pair##* }"
+      if [ "$(merged | jq -r --arg s "$slice" '.slices[$s] // "MISSING"')" = MISSING ]; then
+        printf 'lens     %s points at slice "%s", which is not defined\n' "$lens" "$slice" >&2
+        status=1
+      fi
+    done < <(merged | jq -r '.lenses // {} | to_entries[] | "\(.key) \(.value.slice // "all")"')
+
+    # Every effort level must name lenses that exist.
+    while IFS= read -r pair; do
+      level="${pair%% *}"; lens="${pair##* }"
+      if [ "$(merged | jq -r --arg l "$lens" '.lenses[$l] // "MISSING"')" = MISSING ]; then
+        printf 'effort   %s names lens "%s", which is not defined\n' "$level" "$lens" >&2
+        status=1
+      fi
+    done < <(merged | jq -r '.effort // {} | to_entries[] | .key as $k | .value[] | "\($k) \(.)"')
+
+    # Every stage must name gates that exist.
+    while IFS= read -r pair; do
+      stage="${pair%% *}"; gate="${pair##* }"
+      if [ "$(merged | jq -r --arg g "$gate" '.gates[$g] // "MISSING"')" = MISSING ]; then
+        printf 'stage    %s names gate "%s", which is not defined\n' "$stage" "$gate" >&2
+        status=1
+      fi
+    done < <(merged | jq -r '.stages // {} | to_entries[] | .key as $k | .value[] | "\($k) \(.)"')
+
+    board="$(merged | jq -r '.board // empty')"
+    if [ -n "$board" ] && [ -f "$REPO_ROOT/$board" ]; then
+      printf 'board    %s (%s)\n' "$board" "$(jq -r '.provider' "$REPO_ROOT/$board")"
+    else
+      printf 'board    not configured, the funnel will skip board moves\n'
+    fi
+
+    [ $status -eq 0 ] && printf '\nok\n' || printf '\nfix the lines above\n' >&2
+    exit $status
+    ;;
+
+  *) die "unknown command: $cmd (print|get|gates|lens|path|root|init|check)" ;;
+esac
