@@ -20,7 +20,8 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 # yet is invisible from inside the very place the funnel runs. Falling back to the
 # main checkout means a repo can be configured before the config is committed, and
 # means one local-only config covers every worktree of that repo.
-MAIN_ROOT="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null | xargs -r dirname || true)"
+_common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+MAIN_ROOT="${_common_dir:+$(dirname "$_common_dir")}"
 CONFIG_PATH="$REPO_ROOT/.claude/funnel.config.json"
 if [ ! -f "$CONFIG_PATH" ] && [ -n "$MAIN_ROOT" ] && [ -f "$MAIN_ROOT/.claude/funnel.config.json" ]; then
   CONFIG_PATH="$MAIN_ROOT/.claude/funnel.config.json"
@@ -219,6 +220,34 @@ case "$cmd" in
         status=1
       fi
     done < <(merged | jq -r '.stages // {} | to_entries[] | .key as $k | .value[] | "\($k) \(.)"')
+
+    # A slice whose paths do not exist produces an empty diff, and an empty diff reads
+    # downstream as "nothing to review". That is the one validation failure that reports
+    # itself as success, so it gets checked here rather than discovered by a clean review
+    # of a change nobody looked at.
+    while IFS= read -r line; do
+      name="${line%%|*}"; spec="${line#*|}"
+      case "$spec" in *" -- "*) paths="${spec#* -- }" ;; *) continue ;; esac
+      # shellcheck disable=SC2086
+      for token in $paths; do
+        token="${token%\'}"; token="${token#\'}"
+        case "$token" in ":(exclude)"*) token="${token#:(exclude)}" ;; esac
+        token="${token%\'}"; token="${token#\'}"
+        [ -z "$token" ] && continue
+        if [ ! -e "$REPO_ROOT/$token" ]; then
+          printf 'slice    %s names "%s", which does not exist in this repo\n' "$name" "$token" >&2
+          status=1
+        fi
+      done
+    done < <(merged | resolve | jq -r '.slices // {} | to_entries[] | "\(.key)|\(.value)"')
+
+    while IFS= read -r target; do
+      [ -z "$target" ] && continue
+      [ -e "$REPO_ROOT/$target" ] || {
+        printf 'lens     claims grepTargets names "%s", which does not exist\n' "$target" >&2
+        status=1
+      }
+    done < <(merged | jq -r '.lenses.claims.grepTargets[]? // empty')
 
     board="$(merged | jq -r '.board // empty')"
     if [ -n "$board" ] && [ -f "$REPO_ROOT/$board" ]; then

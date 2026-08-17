@@ -62,6 +62,14 @@ if [ -z "$gates" ]; then
   [ -n "$gates" ] || die "stage \"$stage\" lists no gates; funnel-config get .stages shows the stages"
 fi
 
+# Resolve every gate name before running any of them. Dying halfway through a stage
+# leaves a receipt for the gates that did run, which reads afterwards as if that stage
+# had passed.
+for g in $gates; do
+  [ -n "$("$CFG" get ".gates.\"$g\".cmd")" ] \
+    || die "gate \"$g\" has no cmd in the config; funnel-config get .gates lists them"
+done
+
 mkdir -p "$RECEIPTS"
 tree="$(work_tree_sha)"
 failed=0 ran=0 skipped=0

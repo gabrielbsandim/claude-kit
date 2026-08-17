@@ -139,7 +139,7 @@ and nothing in it needs a human until the findings come back.
 ## Tests
 
 ```sh
-python3 tests/test-hooks.py          # 37 cases, half of them "must not block"
+python3 tests/test-hooks.py          # 36 cases, half of them "must not block"
 python3 tests/check-eval-schema.py   # eval frontmatter against the harness's allowed keys
 claude plugin validate . --strict    # manifests, skills, agents, commands
 ```

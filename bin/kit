@@ -11,7 +11,15 @@
 #   kit setup                  put `kit` on PATH
 set -euo pipefail
 
-KIT_BIN="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# Resolve symlinks by hand: `readlink -f` is GNU, and `kit setup` installs a symlink
+# into ~/.local/bin, so this path runs through one every time. macOS is a target.
+_src="${BASH_SOURCE[0]}"
+while [ -L "$_src" ]; do
+  _dir="$(cd -P "$(dirname "$_src")" && pwd)"
+  _src="$(readlink "$_src")"
+  case "$_src" in /*) ;; *) _src="$_dir/$_src" ;; esac
+done
+KIT_BIN="$(cd -P "$(dirname "$_src")" && pwd)"
 KIT_ROOT="$(dirname "$KIT_BIN")"
 
 usage() { awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$KIT_BIN/kit"; }

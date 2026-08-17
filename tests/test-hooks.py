@@ -16,6 +16,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BLOCK, PASS = 2, 0
 failures = []
+checked = []
 
 
 def run(hook: str, payload: dict, env: dict | None = None) -> int:
@@ -32,6 +33,7 @@ def run(hook: str, payload: dict, env: dict | None = None) -> int:
 def check(name: str, got: int, want: int) -> None:
     ok = got == want
     print(f"{'ok  ' if ok else 'FAIL'}  {name}  (exit {got}, esperado {want})")
+    checked.append(name)
     if not ok:
         failures.append(name)
 
@@ -121,4 +123,4 @@ print()
 if failures:
     print(f"{len(failures)} falha(s): {', '.join(failures)}")
     sys.exit(1)
-print("todos passaram")
+print(f"todos passaram ({len(checked)} casos)")

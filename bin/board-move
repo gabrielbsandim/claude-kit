@@ -101,6 +101,13 @@ case "$provider" in
     command -v gh >/dev/null || die "provider github-projects-v2 needs the gh CLI"
     project_id="$(jq -r '.projectId' "$BOARD")"
     field_id="$(jq -r '.statusFieldId' "$BOARD")"
+    # Resolve the column before touching the network. A typo in the status name used to
+    # surface as a GitHub error about resolving a repository, which sends the reader to
+    # the wrong problem entirely.
+    if [ "$action" = move ]; then
+      option_id="$(jq -r --arg s "$status" '.columns[$s] // empty' "$BOARD")"
+      [ -n "$option_id" ] || die "no column \"$status\" in $board_path (has: $(jq -r '.columns|keys|join(", ")' "$BOARD"))"
+    fi
     item_id="$(gh_item_id)"
     if [ -z "$item_id" ]; then
       note "issue #$issue is not on project $project_id, adding it"
@@ -120,8 +127,6 @@ case "$provider" in
       exit 0
     fi
 
-    option_id="$(jq -r --arg s "$status" '.columns[$s] // empty' "$BOARD")"
-    [ -n "$option_id" ] || die "no column \"$status\" in $board_path (has: $(jq -r '.columns|keys|join(", ")' "$BOARD"))"
     gh api graphql -f project="$project_id" -f item="$item_id" -f field="$field_id" -f value="$option_id" -f query='
       mutation($project:ID!,$item:ID!,$field:ID!,$value:String!){
         updateProjectV2ItemFieldValue(input:{projectId:$project,itemId:$item,fieldId:$field,value:{singleSelectOptionId:$value}}){
@@ -141,7 +146,8 @@ case "$provider" in
       note "Use the Atlassian MCP instead: transition $key to \"$status\". Not moving the board here."
       exit 0
     fi
-    auth="$(printf '%s:%s' "$JIRA_EMAIL" "$JIRA_API_TOKEN" | base64 -w0)"
+    # `base64 -w0` is GNU only; stripping newlines afterwards works on both.
+    auth="$(printf '%s:%s' "$JIRA_EMAIL" "$JIRA_API_TOKEN" | base64 | tr -d '\n')"
     if [ "$action" = where ]; then
       curl -sS -H "Authorization: Basic $auth" "$base/rest/api/3/issue/$key?fields=status" \
         | jq -r '"status: \(.fields.status.name)"'

@@ -2,7 +2,7 @@
 # Worktree lifecycle, including the teardown that never happens on its own.
 #
 #   worktree add <issue> <slug> [--kind feature|bug|refactor|chore] [--doc-only]
-#   worktree rm [<path-or-issue>] [--force]
+#   worktree rm [<path-or-issue>] [--dry-run] [--force]
 #   worktree gc [--yes]        remove only the ones provably finished
 #   worktree list              with disk size and why each one is still here
 #
@@ -123,8 +123,21 @@ case "$cmd" in
     ;;
 
   rm)
-    target="${1:-$PWD}"; force=""
-    [ "${2:-}" = --force ] && force=--force
+    # --dry-run exists because `rm` acts immediately by design (asking twice is how the
+    # teardown step gets skipped, which is what left 27 orphans behind), and something
+    # that acts immediately still needs a way to be inspected. Learned by removing a
+    # worktree while testing that `rm` would refuse to.
+    target=""; force=""; dry=0
+    for a in "$@"; do
+      case "$a" in
+        --force) force=--force ;;
+        --dry-run|-n) dry=1 ;;
+        --fast) FAST=1 ;;
+        -*) die "unknown flag: $a" ;;
+        *) [ -z "$target" ] && target="$a" ;;
+      esac
+    done
+    [ -n "$target" ] || target="$PWD"
     if [ ! -d "$target" ]; then
       # Accept an issue number and find the worktree whose branch carries it.
       found="$(each_worktree | awk -v n="$target" '$2 ~ ("/" n "-") || $2 ~ ("-" n "$") {print $1; exit}')"
@@ -138,8 +151,16 @@ case "$cmd" in
       KEEP*) [ -n "$force" ] || die "refusing: $state (pass --force if you mean it)" ;;
     esac
     size="$(size_of "$target")"
+    branch="$(each_worktree | awk -v p="$target" '$1==p{print $2}')"
+    if [ $dry -eq 1 ]; then
+      printf 'would remove %s (%s) [%s]\n' "$target" "$size" "$state"
+      printf 'recreate with: git worktree add %s %s\n' "$target" "$branch"
+      exit 0
+    fi
     git -C "$(main_root)" worktree remove ${force:+--force} "$target"
     printf 'removed %s (%s freed) [%s]\n' "$target" "$size" "$state"
+    # The branch is untouched, so print the one command that undoes this.
+    printf 'the branch is intact; recreate with: git worktree add %s %s\n' "$target" "$branch"
     ;;
 
   gc)
