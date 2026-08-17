@@ -1,0 +1,68 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      # --strict fails on an unrecognized field, which is the failure mode that
+      # matters here: a typo in a manifest key is silently ignored at runtime and
+      # the component just never loads.
+      - name: Validate manifests and components
+        run: |
+          set -e
+          for target in . ./.claude-plugin/plugin.json ./skills ./agents ./commands; do
+            echo "== $target"
+            claude plugin validate "$target" --strict
+          done
+
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shell syntax
+        run: for f in bin/*; do bash -n "$f"; done
+
+      - name: Python syntax
+        run: for f in hooks/*.py; do python3 -m py_compile "$f"; done
+
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y shellcheck
+          shellcheck -S warning bin/* || true
+
+      - name: Hook behaviour
+        run: python3 tests/test-hooks.py
+
+      - name: Eval suite schema
+        run: |
+          pip install --quiet pyyaml
+          python3 tests/check-eval-schema.py
+
+      - name: Templates are valid JSON
+        run: for f in templates/*.json .claude-plugin/*.json; do jq -e . "$f" > /dev/null; done
+
+  no-em-dash:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The plugin ships a hook that enforces this, so the plugin's own text has to
+      # pass it. Checked with a codepoint, because a file that greps for the literal
+      # would match itself.
+      - name: No em dash in shipped text
+        run: |
+          hits=$(grep -rlP '\x{2014}' --include='*.md' --include='*.json' --include='*.py' . || true)
+          if [ -n "$hits" ]; then
+            echo "em dash found in:"; echo "$hits"; exit 1
+          fi
+          echo "clean"

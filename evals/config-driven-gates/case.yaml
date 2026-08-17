@@ -1,0 +1,47 @@
+schema_version: "1.0"
+name: config-driven-gates
+context:
+  # Builds a throwaway repo whose gate commands are deliberately unusual, so an
+  # answer that names them can only have come from reading the config. A skill
+  # that guessed "npm test" fails this case, which is the whole point: every
+  # path and command in the funnel has to come from funnel.config.json.
+  scaffold_script: |
+    set -e
+    git init -q -b trunk .
+    git config user.email eval@example.com
+    git config user.name eval
+    mkdir -p .claude src/tests docs
+    cat > docs/flow.md <<'DOC'
+    # Flow
+    One task, one branch, one pull request. Never push to trunk.
+    DOC
+    cat > .claude/funnel.config.json <<'CFG'
+    {
+      "base": "trunk",
+      "docs": { "entry": "docs/flow.md", "pipeline": "docs/flow.md" },
+      "gates": {
+        "lint":  { "cmd": "just verify-style" },
+        "types": { "cmd": "just typecheck-strict" },
+        "test":  { "cmd": "just spec --fail-fast" }
+      },
+      "stages": {
+        "implement_first_pass": ["lint", "types", "test"],
+        "ship": ["lint", "types", "test"]
+      },
+      "slices": {
+        "src": "origin/trunk...HEAD -- src ':(exclude)src/tests'",
+        "tests": "origin/trunk...HEAD -- src/tests",
+        "all": "origin/trunk...HEAD"
+      },
+      "lenses": {
+        "correctness": { "slice": "src", "docs": [] },
+        "tests": { "slice": "tests", "docs": [] }
+      },
+      "effort": { "light": ["correctness"], "standard": ["correctness","tests"], "deep": ["correctness","tests"] },
+      "board": ".claude/board.json"
+    }
+    CFG
+    echo "export const x = 1" > src/thing.ts
+    git add -A && git commit -qm "scaffold"
+    git branch -f trunk 2>/dev/null || true
+    git update-ref refs/remotes/origin/trunk HEAD

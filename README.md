@@ -120,13 +120,51 @@ exempt path list is configurable through `NO_EM_DASH_EXEMPT`.
 and lost by the end of the turn; an output style is appended to the system prompt
 and reapplied every turn, which is the difference that makes it hold.
 
+## Why the funnel is a skill and only the review is a workflow
+
+`workflows/review-fanout.js` runs the review stage as deterministic fan-out: read the
+grouped plan, review each slice as one multi-part contract, then send every finding to a
+verifier whose instruction is to **refute** it. Findings that survive go back to the
+implementer; the rest are recorded, including the refuted ones.
+
+The rest of the funnel is deliberately not a workflow. A workflow has no way to stop and
+ask, and four of the funnel's gates are questions a human owns: triage returning
+NEEDS_DECISION, "this is too big for one pull request", showing the spec before the
+worktree is paid for, and the written adjudication at the round cap. Scripting those means
+answering them on the user's behalf, which is what turns a 45-minute task into a five-hour
+one. The review stage is the opposite: the work is already committed, the plan is computed
+by `kit review --dispatches`, the dispatches are read-only and disjoint by construction,
+and nothing in it needs a human until the findings come back.
+
+## Tests
+
+```sh
+python3 tests/test-hooks.py          # 37 cases, half of them "must not block"
+python3 tests/check-eval-schema.py   # eval frontmatter against the harness's allowed keys
+claude plugin validate . --strict    # manifests, skills, agents, commands
+```
+
+CI runs all of those plus `bash -n` on every script, `shellcheck`, and a check that no
+shipped text contains an em dash, since the plugin ships a hook that forbids it.
+
+The hook tests exist in that shape on purpose: a guard with a false positive gets
+disabled within a day, so every "must block" case is paired with a "must not block" one.
+`node --env-file=.env` and `process.env.PORT` have to pass, or `env-guard` is unusable.
+
+## Status of each piece
+
+| Piece | State |
+|---|---|
+| skills, agents, commands, hooks, output style, `bin/*` | verified by running them |
+| GitHub Projects v2 board adapter | verified end to end: discover, read, write |
+| review grouping and doc-load numbers | measured on a real branch, reproducible with `kit review deep` |
+| Jira and Azure DevOps adapters | written from the API contract, **never run**, marked so in their own source |
+| `evals/` | schema validated offline, **never run**: `claude plugin eval` is early access and was not enabled on the account this was built from |
+
 ## Not here yet
 
-`ship` as a standalone skill for work that already exists, a `note` skill for
-writing a durable fact into a knowledge vault, and a verified Azure DevOps
-adapter. The Jira and Azure adapters are marked unverified in their own source
-because they were written from the API contract on a machine where neither
-service exists, and that is a different claim from "it works".
+`ship` as a standalone skill for work that already exists, and a `note` skill for writing
+a durable fact into a knowledge vault.
 
 ## License
 
