@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+"""Maps the screen files a branch changed to the routes that render them.
+
+    screen-routes            a table: file, route, how the route was found
+    screen-routes --json     the same, for a dispatch to consume
+    screen-routes --base X   override the base ref
+
+The browser lens needs URLs, and the diff only has file paths. Guessing the URL
+in the dispatch prompt is how a lens ends up proving the wrong screen, or the
+login page, so the mapping is computed here and the agent is handed the answer.
+
+A component is not a route. Reaching one means walking the import graph upward
+until a router entry point is found, which is why this is a graph walk and not a
+path rewrite. Files whose route cannot be established are reported as unresolved
+rather than dropped: an unproven screen has to be visible.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+
+KIT_BIN = os.path.dirname(os.path.abspath(__file__))
+EXTENSIONS = (".tsx", ".ts", ".jsx", ".js", ".mts", ".mjs")
+INDEX_NAMES = tuple("index" + e for e in EXTENSIONS)
+IMPORT_RE = re.compile(
+    r"""(?:from\s*|import\s*\(\s*|require\s*\(\s*)['"]([^'"]+)['"]""")
+# A dynamic segment is [id], a catch-all is [...slug], and an optional catch-all
+# is [[...slug]]. All three carry the parameter name in the same place.
+DYNAMIC_RE = re.compile(r"^\[{1,2}(?:\.\.\.)?([^\]]+)\]{1,2}$")
+MAX_DEPTH = 8
+
+
+def run(args, cwd):
+    out = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
+    if out.returncode != 0:
+        sys.exit(out.stderr.strip() or " ".join(args) + " failed")
+    return out.stdout
+
+
+def config(repo_root):
+    raw = run([os.path.join(KIT_BIN, "funnel-config"), "print"], repo_root)
+    return json.loads(raw)
+
+
+def alias_roots(repo_root):
+    """The `@/x` to `src/x` mapping, read from tsconfig when it is written down.
+
+    Assuming the convention would resolve imports to files that do not exist,
+    and a missing edge in the graph reads as an unreachable screen.
+    """
+    roots = {}
+    for name in ("tsconfig.json", "jsconfig.json"):
+        path = os.path.join(repo_root, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            text = open(path, encoding="utf-8").read()
+            text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+            text = re.sub(r"(?m)//.*$", "", text)
+            text = re.sub(r",(\s*[}\]])", r"\1", text)
+            paths = json.loads(text).get("compilerOptions", {}).get("paths", {})
+        except (OSError, ValueError):
+            continue
+        for spec, targets in paths.items():
+            if not spec.endswith("/*") or not targets:
+                continue
+            target = targets[0]
+            if target.endswith("/*"):
+                roots[spec[:-2]] = target[:-2]
+    return roots or {"@": "src"}
+
+
+def resolve_spec(spec, importer, repo_root, roots):
+    if spec.startswith("."):
+        base = os.path.normpath(os.path.join(os.path.dirname(importer), spec))
+    else:
+        prefix = spec.split("/", 1)[0]
+        if prefix not in roots or "/" not in spec:
+            return None
+        base = os.path.normpath(os.path.join(roots[prefix], spec.split("/", 1)[1]))
+    for candidate in (base,) + tuple(base + e for e in EXTENSIONS) + tuple(
+        os.path.join(base, n) for n in INDEX_NAMES
+    ):
+        if os.path.isfile(os.path.join(repo_root, candidate)):
+            return candidate
+    return None
+
+
+def importers_index(repo_root, source_dirs):
+    """file -> the files that import it. Built once, walked many times."""
+    edges = {}
+    for source_dir in source_dirs:
+        root_dir = os.path.join(repo_root, source_dir)
+        if not os.path.isdir(root_dir):
+            continue
+        roots = alias_roots(repo_root)
+        for dirpath, dirnames, filenames in os.walk(root_dir):
+            dirnames[:] = [d for d in dirnames if d not in ("node_modules", ".next", "dist")]
+            for filename in filenames:
+                if not filename.endswith(EXTENSIONS):
+                    continue
+                importer = os.path.relpath(os.path.join(dirpath, filename), repo_root)
+                try:
+                    text = open(os.path.join(dirpath, filename), encoding="utf-8").read()
+                except OSError:
+                    continue
+                for spec in IMPORT_RE.findall(text):
+                    target = resolve_spec(spec, importer, repo_root, roots)
+                    if target:
+                        edges.setdefault(target, set()).add(importer)
+    return edges
+
+
+def is_entry(path, app_dir, entry_names):
+    if not path.startswith(app_dir.rstrip("/") + "/"):
+        return False
+    return os.path.basename(path) in entry_names
+
+
+def route_of(entry, app_dir, route_params):
+    """The URL an app-router entry file answers on, and the params still missing."""
+    rel = os.path.relpath(os.path.dirname(entry), app_dir)
+    missing = []
+    segments = []
+    for segment in [] if rel == "." else rel.split(os.sep):
+        # A parenthesised segment is a route group and a leading @ is a named
+        # slot. Neither appears in the URL, so a path rewrite that keeps them
+        # produces a 404 that looks like a broken screen.
+        if segment.startswith("(") and segment.endswith(")"):
+            continue
+        if segment.startswith("@"):
+            continue
+        dynamic = DYNAMIC_RE.match(segment)
+        if dynamic:
+            name = dynamic.group(1)
+            value = str(route_params.get(name, "") or "")
+            if not value:
+                missing.append(name)
+                segments.append(segment)
+            else:
+                segments.append(value)
+            continue
+        segments.append(segment)
+    return "/" + "/".join(segments), missing
+
+
+def matches(path, globs):
+    import fnmatch
+
+    for pattern in globs:
+        if fnmatch.fnmatch(path, pattern):
+            return True
+        # fnmatch treats * as crossing separators, so `src/app/**/page.tsx`
+        # already matches nested paths. A trailing-directory pattern does not,
+        # and a repo that writes one means "everything under here".
+        if pattern.endswith("/") and path.startswith(pattern):
+            return True
+    return False
+
+
+def main():
+    argv = sys.argv[1:]
+    as_json = "--json" in argv
+    base_override = None
+    if "--base" in argv:
+        base_override = argv[argv.index("--base") + 1]
+
+    repo_root = run(["git", "rev-parse", "--show-toplevel"], ".").strip()
+    cfg = config(repo_root)
+    browser = cfg.get("browser") or {}
+    app_dir = browser.get("appDir", "src/app")
+    entry_names = tuple(browser.get("entryFiles") or ["page.tsx", "page.ts", "page.jsx", "page.js"])
+    globs = browser.get("screenGlobs") or ["src/app/**", "src/features/**", "src/components/**"]
+    excludes = browser.get("excludeGlobs") or ["src/app/api/**", "*/tests/*", "*.test.*", "*.spec.*"]
+    route_params = browser.get("routeParams") or {}
+    overrides = browser.get("routes") or {}
+    max_routes = int(browser.get("maxRoutes", 6))
+    base = base_override or cfg.get("base", "main")
+    base_ref = base if "/" in base else "origin/" + base
+
+    changed = [
+        line
+        for line in run(
+            ["git", "diff", "--name-only", base_ref + "...HEAD"], repo_root
+        ).splitlines()
+        if line
+    ]
+    screens = [
+        f
+        for f in changed
+        if matches(f, globs) and not matches(f, excludes) and f.endswith(EXTENSIONS)
+    ]
+
+    results = []
+    if screens:
+        source_dirs = sorted({g.split("/")[0] + "/" + g.split("/")[1] for g in globs if "/" in g} or {"src"})
+        source_dirs = sorted({d.split("*")[0].rstrip("/") for d in source_dirs})
+        edges = importers_index(repo_root, source_dirs)
+        for path in screens:
+            override = next(
+                (r for prefix, r in overrides.items() if path == prefix or path.startswith(prefix.rstrip("*"))),
+                None,
+            )
+            if override:
+                results.append({"file": path, "route": override, "via": "configured", "missingParams": []})
+                continue
+            # Breadth first, so the route reported is the shallowest entry point
+            # that reaches this file rather than whichever one the walk met first.
+            seen = {path}
+            frontier = [(path, [])]
+            found = []
+            depth = 0
+            while frontier and depth < MAX_DEPTH and not found:
+                nxt = []
+                for node, trail in frontier:
+                    if is_entry(node, app_dir, entry_names):
+                        route, missing = route_of(node, app_dir, route_params)
+                        found.append({
+                            "file": path,
+                            "route": route,
+                            "via": node if node != path else "itself",
+                            "missingParams": missing,
+                        })
+                        continue
+                    for importer in sorted(edges.get(node, ())):
+                        if importer not in seen:
+                            seen.add(importer)
+                            nxt.append((importer, trail + [node]))
+                frontier = nxt
+                depth += 1
+            results.extend(found or [{
+                "file": path,
+                "route": None,
+                "via": "no router entry point imports this file",
+                "missingParams": [],
+            }])
+
+    ready = []
+    for r in results:
+        if r["route"] and not r["missingParams"] and r["route"] not in [x["route"] for x in ready]:
+            ready.append(r)
+    dropped = ready[max_routes:]
+    ready = ready[:max_routes]
+    blocked = [r for r in results if not r["route"] or r["missingParams"]]
+
+    payload = {
+        "base": base_ref,
+        "changedScreens": len(screens),
+        "visit": ready,
+        "blocked": blocked,
+        "droppedByCap": [r["route"] for r in dropped],
+        "maxRoutes": max_routes,
+        "baseUrl": browser.get("baseUrl", ""),
+        "enabled": bool(browser.get("enabled", False)),
+    }
+    if as_json:
+        print(json.dumps(payload, indent=2))
+        return 0
+
+    if not screens:
+        print("no screen files changed against %s, the browser lens has nothing to prove" % base_ref)
+        return 0
+    print("base            %s" % base_ref)
+    print("changed screens %d" % len(screens))
+    print("")
+    for r in ready:
+        print("visit    %-34s %s" % (r["route"], r["file"]))
+    for r in blocked:
+        why = (
+            "needs a value for {%s} in browser.routeParams" % ", ".join(r["missingParams"])
+            if r["missingParams"]
+            else r["via"]
+        )
+        print("blocked  %-34s %s" % (r["file"], why))
+    if dropped:
+        # Never a silent cap: a route trimmed here is a screen nobody looked at.
+        print("")
+        print("dropped by maxRoutes=%d: %s" % (max_routes, ", ".join(r["route"] for r in dropped)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

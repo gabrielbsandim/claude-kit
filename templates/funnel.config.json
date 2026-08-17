@@ -76,6 +76,29 @@
   "maxRounds": 2,
   "maxParallelAgents": 3,
 
+  "browser": {
+    "enabled": false,
+    "baseUrl": "http://localhost:3000",
+    "start": "npm run dev",
+    "readyPath": "/",
+    "readyTimeout": 180,
+    "artifactsDir": ".playwright-mcp",
+    "efforts": ["standard", "deep"],
+    "appDir": "src/app",
+    "entryFiles": ["page.tsx", "page.ts", "page.jsx", "page.js"],
+    "screenGlobs": ["src/app/**", "src/features/**", "src/components/**"],
+    "excludeGlobs": ["src/app/api/**", "*/tests/*", "*.test.*", "*.spec.*"],
+    "routeParams": {},
+    "routes": {},
+    "maxRoutes": 6,
+    "viewports": [
+      { "name": "mobile", "width": 390, "height": 844 },
+      { "name": "desktop", "width": 1440, "height": 900 }
+    ],
+    "auth": { "loginPath": "/login", "userEnv": "", "passEnv": "" },
+    "uxDocs": []
+  },
+
   "flaky": [],
 
   "board": ".claude/board.json"

@@ -44,13 +44,20 @@ slice_range() {
 }
 
 write_named_slice() {
-  local name="$1" spec range file
+  local name="$1" spec range file tag
   spec="$("$CFG" get ".slices.\"$name\"")"
   [ -n "$spec" ] || die "no slice named \"$name\""
   range="$(slice_range "$spec")"
-  file="$OUT/slice-$name.diff"
+  # The range is part of the filename, and the write lands by rename. Without
+  # either, a first-round package and a `--since` fix-round package share one path:
+  # the second `>` truncates at open, and a reviewer already reading it reviews a
+  # truncated diff with no error to show for it. Four of the seven lenses in the
+  # template share the slice "src", so this path is contended by construction.
+  tag="$(printf '%s' "$range" | git hash-object --stdin | cut -c1-8)"
+  file="$OUT/slice-$name.$tag.diff"
   # shellcheck disable=SC2086
-  ( cd "$REPO_ROOT" && eval "git diff --stat=200 $range && echo && git diff -U8 $range" ) >"$file"
+  ( cd "$REPO_ROOT" && eval "git diff --stat=200 $range && echo && git diff -U8 $range" ) >"$file.$$"
+  mv -f "$file.$$" "$file"
   printf '%s' "$file"
 }
 

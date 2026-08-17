@@ -6,6 +6,7 @@
 #   gate --verify <stage>   exit 0 only if a receipt already covers this tree
 #   gate --force <stage>    ignore receipts
 #   gate --receipts         list receipts for the current tree
+#   gate --jobs N           run up to N gates at once, overriding gateJobs
 #
 # Why a receipt: the pre-push check and the stage-3 gate run byte-identical
 # commands over a tree that just passed. Skipping the second run is worth about
@@ -39,11 +40,12 @@ work_tree_sha() {
 
 cmd_hash() { printf '%s' "$1" | git hash-object --stdin | cut -c1-8; }
 
-force=0 verify=0 gates=""
+force=0 verify=0 gates="" jobs=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --force) force=1; shift ;;
     --verify) verify=1; shift ;;
+    --jobs) jobs="$2"; shift 2 ;;
     --gates) gates="$(printf '%s' "$2" | tr ',' '\n')"; shift 2 ;;
     --receipts)
       tree="$(work_tree_sha)"
@@ -74,6 +76,66 @@ mkdir -p "$RECEIPTS"
 tree="$(work_tree_sha)"
 failed=0 ran=0 skipped=0
 
+# One gate, start to receipt. Everything it reports goes through the status file
+# rather than straight to the terminal, because with two gates running at once a
+# direct write interleaves mid-line and the slower gate's failure log ends up
+# spliced into the faster gate's pass line.
+run_gate() {
+  local g="$1" status="$2" c receipt log start dur
+  c="$("$CFG" get ".gates.\"$g\".cmd")"
+  receipt="$RECEIPTS/$tree.$g.$(cmd_hash "$c")"
+  log="$(mktemp)"
+  start=$SECONDS
+  if ( cd "$REPO_ROOT" && eval "$c" ) >"$log" 2>&1; then
+    dur=$((SECONDS - start))
+    # Written aside and moved into place, because `> "$receipt"` truncates at open
+    # and a concurrent reader's `head -1` then sees an empty file and prints
+    # "skip receipt from " for a gate that has not passed yet. The rename is
+    # atomic within the directory, so a receipt is either absent or complete.
+    { date -u +%Y-%m-%dT%H:%M:%SZ; printf 'cmd: %s\nseconds: %s\n' "$c" "$dur"; } >"$receipt.$$"
+    mv -f "$receipt.$$" "$receipt"
+    printf 'pass %s\n' "$dur" >"$status"
+    rm -f "$log"
+  else
+    dur=$((SECONDS - start))
+    { printf 'fail %s %s\n' "$dur" "$log"
+      # Deterministic flake data, not a verdict: which quarantined files appear in
+      # the failure, and whether this branch's diff can even reach them.
+      base="$("$CFG" get .base)"
+      touched="$(git -C "$REPO_ROOT" diff --name-only "origin/$base...HEAD" 2>/dev/null || true)"
+      while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        if grep -qF -- "$f" "$log"; then
+          if printf '%s\n' "$touched" | grep -qxF -- "$f"; then
+            printf 'flake    %s is quarantined BUT this diff touches it, so treat it as a real failure\n' "$f"
+          else
+            printf 'flake    %s is quarantined and this diff does not touch it, re-run it alone before blaming the change\n' "$f"
+          fi
+        fi
+      done < <("$CFG" get '.flaky[]?.file')
+    } >"$status"
+  fi
+}
+
+report_gate() {
+  local g="$1" status="$2" verdict dur log
+  read -r verdict dur log < "$status" || verdict=fail
+  if [ "$verdict" = pass ]; then
+    printf '%-14s pass   %ss\n' "$g" "$dur"
+    ran=$((ran + 1))
+  else
+    printf '%-14s FAIL   %ss\n' "$g" "$dur" >&2
+    [ -n "${log:-}" ] && [ -f "$log" ] && tail -60 "$log" >&2
+    tail -n +2 "$status" >&2
+    [ -n "${log:-}" ] && printf 'log      %s\n' "$log" >&2
+    failed=$((failed + 1))
+  fi
+}
+
+# Pass one decides, pass two runs. Receipts and missing-receipt verdicts are
+# instant and order matters for reading them, so they are settled before anything
+# is launched.
+todo=""
 for g in $gates; do
   c="$("$CFG" get ".gates.\"$g\".cmd")"
   [ -n "$c" ] || die "gate \"$g\" has no cmd in the config"
@@ -84,44 +146,69 @@ for g in $gates; do
     skipped=$((skipped + 1))
     continue
   fi
-
   if [ $verify -eq 1 ]; then
     printf '%-14s MISSING receipt\n' "$g" >&2
     failed=$((failed + 1))
     continue
   fi
+  todo="$todo $g"
+done
 
-  log="$(mktemp)"
-  start=$SECONDS
-  printf '%-14s run    %s\n' "$g" "$c"
-  if ( cd "$REPO_ROOT" && eval "$c" ) >"$log" 2>&1; then
-    dur=$((SECONDS - start))
-    { date -u +%Y-%m-%dT%H:%M:%SZ; printf 'cmd: %s\nseconds: %s\n' "$c" "$dur"; } >"$receipt"
-    printf '%-14s pass   %ss\n' "$g" "$dur"
-    ran=$((ran + 1))
-    rm -f "$log"
+if [ -z "$jobs" ]; then
+  jobs="$("$CFG" get .gateJobs)"
+  case "$jobs" in ''|null) jobs=1 ;; esac
+fi
+case "$jobs" in *[!0-9]*|"") die "--jobs must be a positive integer, got \"$jobs\"" ;; esac
+[ "$jobs" -ge 1 ] || die "--jobs must be at least 1"
+
+# A gate marked exclusive runs alone. That is the only safety mechanism here, and
+# it is a declaration rather than something this script can infer: whether two
+# commands can share a working tree depends on what they write, which only the
+# repo knows.
+launch_group() {
+  local group="$1" g pids="" statuses="" st n=0
+  set -- $group
+  [ $# -eq 0 ] && return 0
+  if [ $# -eq 1 ]; then
+    g="$1"
+    printf '%-14s run    %s\n' "$g" "$("$CFG" get ".gates.\"$g\".cmd")"
+    st="$(mktemp)"
+    run_gate "$g" "$st"
+    report_gate "$g" "$st"
+    rm -f "$st"
+    return 0
+  fi
+  printf 'parallel       %s gates at once: %s\n' "$#" "$*"
+  for g in "$@"; do
+    st="$(mktemp)"
+    statuses="$statuses $g:$st"
+    run_gate "$g" "$st" &
+    pids="$pids $!"
+    n=$((n + 1))
+    if [ "$n" -ge "$jobs" ]; then
+      for p in $pids; do wait "$p" || true; done
+      pids=""; n=0
+    fi
+  done
+  for p in $pids; do wait "$p" || true; done
+  for pair in $statuses; do
+    report_gate "${pair%%:*}" "${pair#*:}"
+    rm -f "${pair#*:}"
+  done
+}
+
+# Consecutive non-exclusive gates form one group; an exclusive gate is a barrier
+# and a group of its own. Declaration order is preserved either way.
+group=""
+for g in $todo; do
+  if [ "$("$CFG" get ".gates.\"$g\".exclusive")" = true ]; then
+    launch_group "$group"; group=""
+    launch_group "$g"
   else
-    dur=$((SECONDS - start))
-    printf '%-14s FAIL   %ss\n' "$g" "$dur" >&2
-    tail -60 "$log" >&2
-    # Deterministic flake data, not a verdict: which quarantined files appear in
-    # the failure, and whether this branch's diff can even reach them.
-    base="$("$CFG" get .base)"
-    touched="$(git -C "$REPO_ROOT" diff --name-only "origin/$base...HEAD" 2>/dev/null || true)"
-    while IFS= read -r f; do
-      [ -z "$f" ] && continue
-      if grep -qF -- "$f" "$log"; then
-        if printf '%s\n' "$touched" | grep -qxF -- "$f"; then
-          printf 'flake    %s is quarantined BUT this diff touches it, so treat it as a real failure\n' "$f" >&2
-        else
-          printf 'flake    %s is quarantined and this diff does not touch it, re-run it alone before blaming the change\n' "$f" >&2
-        fi
-      fi
-    done < <("$CFG" get '.flaky[]?.file')
-    printf 'log      %s\n' "$log" >&2
-    failed=$((failed + 1))
+    group="$group $g"
   fi
 done
+launch_group "$group"
 
 if [ $verify -eq 1 ]; then
   [ $failed -eq 0 ] && printf 'all receipts present for tree %s\n' "$tree"

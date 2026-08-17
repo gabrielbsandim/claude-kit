@@ -1,2 +1,4 @@
 .worktree-gc-manifest-*.txt
 node_modules/
+.playwright-mcp/
+__pycache__/

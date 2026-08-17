@@ -30,19 +30,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Shell syntax
-        run: for f in bin/*; do bash -n "$f"; done
-
-      - name: Python syntax
-        run: for f in hooks/*.py; do python3 -m py_compile "$f"; done
+      # Dispatch on the shebang rather than the name: bin/ holds both, and
+      # `bash -n` on a Python file is a syntax error about the wrong language.
+      - name: Syntax, by interpreter
+        run: |
+          set -e
+          for f in bin/*; do
+            case "$(head -1 "$f")" in
+              *python*) python3 -m py_compile "$f"; echo "py   $f" ;;
+              *)        bash -n "$f";              echo "bash $f" ;;
+            esac
+          done
+          for f in hooks/*.py tests/*.py; do python3 -m py_compile "$f"; done
 
       - name: shellcheck
         run: |
           sudo apt-get update -qq && sudo apt-get install -y shellcheck
-          shellcheck -S warning bin/* || true
+          for f in bin/*; do
+            case "$(head -1 "$f")" in *python*) ;; *) shellcheck -S warning "$f" || true ;; esac
+          done
 
       - name: Hook behaviour
         run: python3 tests/test-hooks.py
+
+      - name: Screen route mapping
+        run: |
+          git config --global user.email ci@example.com
+          git config --global user.name ci
+          python3 tests/test-screen-routes.py
+
+      - name: Gate concurrency
+        run: python3 tests/test-gate-jobs.py
 
       - name: Eval suite schema
         run: |
@@ -61,7 +79,7 @@ jobs:
       # would match itself.
       - name: No em dash in shipped text
         run: |
-          hits=$(grep -rlP '\x{2014}' --include='*.md' --include='*.json' --include='*.py' . || true)
+          hits=$(grep -rlP '\x{2014}' --include='*.md' --include='*.json' --include='*.py' . bin/* || true)
           if [ -n "$hits" ]; then
             echo "em dash found in:"; echo "$hits"; exit 1
           fi

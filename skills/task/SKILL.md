@@ -76,7 +76,7 @@ pass**, not permission to iterate, because a round is the expensive unit.
 - No worktree yet. Triage and spec change no file, and the environment is paid
   for only after the spec gate says the task is real.
 
-## The four agents this skill dispatches
+## The five agents this skill dispatches
 
 Each stage has a named agent that ships with the plugin, and the dispatch has to name it,
 because a generic "dispatch a planning subagent" resolves to a general-purpose agent and
@@ -88,6 +88,20 @@ the standing instructions in these files are lost:
 | 2 | `claude-kit:funnel-implementer` | the prohibitions, the bug-reproduction-first rule, what to do with a red gate |
 | 3 | `claude-kit:funnel-test-writer` | what to test in what order, and the two failure modes that are the writer's own |
 | 4 | `claude-kit:funnel-reviewer` | the reading discipline, the grading rubric, CONFIRMED against PLAUSIBLE |
+| 4 | `claude-kit:funnel-screen-lens` | report only what you observed, the three-source standard, and NOT PROVEN is not a pass |
+
+The screen lens runs only when the change touched a screen and `browser.enabled`
+is true. It is the only agent here that finds out rather than reasons, which is
+also why it is the only one that can return a green report from a session that
+never left the login page. It is told to refuse that outcome by name.
+
+**Exactly one screen lens at a time, and this was measured rather than assumed.**
+The behaviour half and the interface half were two agents until two of them were
+run concurrently against this MCP server: one agent's `browser_evaluate` read the
+*other* agent's page in three rounds out of four, and matched only after the other
+stopped navigating. One server, one browser, one tab, no per-caller isolation. So
+the two halves are numbered parts of one dispatch, which also means each route is
+visited once instead of twice.
 
 The task-specific half still travels in the prompt. The agent carries what is true of that
 stage in every task; the dispatch carries this task.
@@ -240,6 +254,97 @@ On the repository this was built against, a `deep` review goes from 7 dispatches
 reading 4,256 diff lines and 517 KB of documents to 4 dispatches reading 2,043
 lines and 117 KB. Reproduce with `kit review deep` on any branch.
 
+### The screens, in a real browser, in the same round
+
+A diff lens reads what the code says. It cannot tell you that the submit button
+is below the fold on a phone, that the table scrolls the page sideways, or that
+the save succeeds and the screen says nothing. So when the change touched a
+screen, the review has a browser half that runs alongside the diff dispatches.
+
+```
+kit screens          # the routes, and the ones it could not resolve
+kit screens --json   # the same, to paste into the two dispatches
+```
+
+`kit screens` walks the import graph from each changed file up to the router
+entry point that reaches it, so a component nested three levels below a page
+still yields a URL. Nothing here guesses a route inside a prompt.
+
+Run the browser half when **all three** hold, and skip it silently otherwise:
+
+1. `browser.enabled` is true,
+2. the effort level is in `browser.efforts`,
+3. `kit screens` returned at least one route under `visit`.
+
+Then **one** dispatch to `claude-kit:funnel-screen-lens`, answering two numbered
+parts from one visit per route: part 1 is whether it works, part 2 is whether it
+can be used. It gets the base URL, the `visit` list verbatim, the viewports, the
+spec's acceptance criteria, and `browser.uxDocs`, which is what anchors part 2 to
+this repo's conventions instead of to taste. One, not two, for the reason in the
+agent table: the browser is shared and two of them corrupt each other's reads.
+
+**Four things this stage owes you, and each one has bitten:**
+
+- **You bring the app up, because the lens cannot.** The agent has no `Bash` on
+  purpose, so `browser.start` and the `readyPath` poll are yours. A dispatch sent
+  at a port with nothing on it returns findings about a connection error.
+- **A port that answers is not proof it is your build.** `readyPath` proves
+  something is listening. If a dev server from an earlier task is still up on that
+  port, the lens reviews that build and reports it as this branch. Check the port
+  before starting, and if something is already there, either reuse it knowingly or
+  stop: two `npm run dev` on one port do not both bind it, and the second one
+  silently picks another port that `baseUrl` does not name.
+- **`kit screens` printing `blocked` is a result, not noise.** A dynamic route
+  with no value in `routeParams` and a component no page imports are both screens
+  nobody is going to look at. Carry them into the report.
+- **Credentials by environment variable name only.** `funnel-config check` refuses
+  a value in `browser.auth`, and the agent has no `Bash`, so it cannot read a
+  secret the dispatch did not already hand it.
+
+A finding from the lens is a finding like any other: same ledger, same rounds,
+blocks nothing on its own. A browser is the most nondeterministic thing in this
+funnel, so it never becomes a gate.
+
+### What may actually run at once
+
+The point of parallelism here is wall clock, so it is worth being exact about what
+overlaps and what only looks like it does. Three lanes, and the rule is that a
+lane owns a resource:
+
+| Lane | Owns | How many at once |
+| --- | --- | --- |
+| review | nothing, it only reads diff files | up to `maxParallelAgents` |
+| browser | the shared browser, the dev server, the app's data | exactly 1 |
+| gates | the working tree | `gateJobs`, with `exclusive` gates alone |
+
+The review lane and the browser lane genuinely overlap: different resources,
+no contention. Lanes are not a licence to fan out further inside one, and
+two things that look parallelizable are not:
+
+- **Two vitest runs in one working tree.** Not a theory: in the repository this
+  was built against, `src/tests/setup-dom.test.ts` writes a config file into the
+  working directory under a fixed name and deletes it in `afterAll`, and any
+  coverage run `rm -rf`s its own report directory at startup. Either one makes the
+  other run fail for a reason that has nothing to do with the change. That is what
+  `exclusive` is for, and it is why `gateJobs` defaults to 1.
+- **The browser lane next to a heavy gate, on a small machine.** Measured on the
+  box this was written on: 6 cores, 5.9 GB of RAM with about 3 GB free, a dev
+  script that asks for an 8 GB V8 heap ceiling, vitest pinned to 4 workers, and
+  Chromium on top. Overlapping the browser with lint and types is free.
+  Overlapping it with the suite is how a gate fails for memory and gets read as a
+  flake. Check the machine before assuming the lane is free.
+
+Before raising `gateJobs`, run `kit config check`: it prints, per stage, exactly
+which gates would share and which run alone, and it fails when one gate's command
+expands to another's plus a flag, since that stage is paying for the same work
+twice.
+
+What this is worth, measured on the repository this was built against: the `ship`
+stage runs in **268.7s** where the same four gates in series cost 423.5s. Note
+where that came from, because it decides where to look next: 142.5s of it was a
+duplicated suite run that concurrency would have hidden rather than fixed, and
+only 13s was the overlap. Removing work beats overlapping it.
+
 ### Reviewer discipline, pure token gain
 
 Put these in every review dispatch:
@@ -329,10 +434,20 @@ stop.
 
 ## Stage 6 · Report
 
-Short prose with real numbers: what changed, gate results, findings found and
-fixed, the pull request link, and what was deliberately left out. A gate that
-stopped the funnel is named as such, without varnish. Never declare done
-without the numbers.
+**Six lines, hard cap, one line each and in this order.** Anything that does not
+fit one of the six does not go in the final message; it goes in the pull request
+body or the findings ledger, which is where a reader who wants it will look.
+
+1. The pull request link, its draft state and base, and the issue it closes.
+2. What changed, in one sentence naming the class of defect, not each instance.
+3. Gates: the count that ran, failed and was skipped by receipt, and the tree SHA.
+4. Review: findings by severity, how many rounds, where the rest is written down.
+5. What was left out, and the issue that owns it.
+6. What needs the user, or "nothing" if the answer is nothing.
+
+A gate that stopped the funnel replaces line 1 and is named without varnish. A
+number with no command behind it is not a number: leave it out. Never declare
+done without lines 3 and 4.
 
 ## Why the funnel has this shape
 

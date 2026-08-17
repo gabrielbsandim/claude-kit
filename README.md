@@ -66,21 +66,83 @@ The four things a default cannot guess:
 
 ## What is scripted, and what stays a judgment call
 
-Six things are deterministic, because prose does not execute:
+Seven things are deterministic, because prose does not execute:
 
 | Command | What it removes |
 | --- | --- |
 | `kit worktree add/rm/gc` | the teardown step that is one command, is written in two places, and gets skipped every time a run ends in a report. It left 27 orphans and 33 GB behind once. `gc` removes only what it can prove is finished, and prints why it kept the rest. |
-| `kit gate <stage>` | running the same suite twice. Receipts are keyed by the tree SHA of the working directory, including untracked files, so the pre-push check skips what the implement gate just proved and says so. |
+| `kit gate <stage>` | running the same suite twice. Receipts are keyed by the tree SHA of the working directory, including untracked files, so the pre-push check skips what the implement gate just proved and says so. With `gateJobs` above 1 the stage's independent gates also run at once, and a gate marked `exclusive` still runs alone. |
 | `kit review <level>` | fan-out per lens, and the blanket document load. One dispatch per slice, every lens on that slice as a numbered part of one contract, the diff written to a file so no reviewer runs `git`. On the repo this was built against, a deep review goes from 7 dispatches reading 4,256 diff lines and 517 KB of docs to 4 dispatches reading 2,043 lines and 117 KB. |
 | `kit board <status> --issue N` | the two board writes, behind one port with three adapters. |
 | `kit review --disjoint a b` | guessing whether two stages can run in parallel. It answers from the file lists. |
+| `kit screens` | guessing, inside a prompt, which URL renders a component the diff changed. It walks the import graph from each changed file to the router entry point that reaches it, and reports the ones it cannot resolve instead of inventing them. |
 | the `flaky` list in the config | a red gate in a file the diff never touched turning into a wasted fix round. `kit gate` says whether the failing file is quarantined **and** whether this branch can even reach it. |
 
 Everything else stays a model dispatch, because it is judgment: the triage
 verdict, whether a scope is closed or too big for one pull request, CONFIRMED
 against PLAUSIBLE, and "a round whose fix is larger than the original commit is
 not a round, it is the spec having been wrong".
+
+## Screens, in a real browser
+
+Every other lens in the review reads a diff and reasons about it. That is why a
+change can pass lint, types, the whole suite and a seven-lens review and still
+ship a form whose submit button is off screen on a phone. So when a change touches
+a screen, the review gains a browser half over Playwright MCP: `funnel-screen-lens`,
+one agent answering two numbered parts from one visit per route.
+
+| Part | Asks | Reports |
+| --- | --- | --- |
+| 1 | does it work | render, console errors, failed requests, each acceptance criterion exercised or explicitly not |
+| 2 | can it be used | overflow and reach at every viewport, the states a screen has beyond the one it loads in, feedback after an action, keyboard and contrast, and consistency with the screens the change did not touch |
+
+It is off unless `browser.enabled` is true, the effort level is in
+`browser.efforts`, and `kit screens` found a route. A browser is the most
+nondeterministic thing in this toolkit, so it is never a gate: it produces
+findings, which go into the same ledger and block nothing on their own.
+
+**One agent, and that is measured rather than preferred.** The two parts were two
+agents first. Two of them run concurrently against this MCP server, four rounds
+each: one agent's `browser_evaluate` read the *other* agent's page in three rounds
+out of four, and matched only once the other stopped navigating. The server is
+launched as `npx @playwright/mcp@latest` with no `--isolated`, so every caller in a
+session shares one browser, one profile and one tab. Merging the parts also halves
+the navigation, since both questions are answerable from one visit.
+
+```jsonc
+"browser": {
+  "enabled": true,
+  "baseUrl": "http://localhost:3000",
+  "start": "npm run dev",          // the lens brings the app up, and polls readyPath
+  "readyPath": "/login",
+  "artifactsDir": ".playwright-mcp",
+  "appDir": "src/app",             // how an entry file becomes a URL
+  "routeParams": { "id": "sup-1" },// a real value per dynamic segment
+  "viewports": [{ "name": "mobile", "width": 390, "height": 844 }],
+  "auth": { "userEnv": "APP_E2E_USER", "passEnv": "APP_E2E_PASS" },
+  "uxDocs": ["docs/frontend.md"]   // what the critic cites, so a finding is not a preference
+}
+```
+
+Three decisions in there that are not preferences:
+
+**A UX finding has to cite something.** The critic answers to this repo's own
+frontend documents, to a sibling screen the change did not touch, or to something
+a person cannot do. Anything grounded in none of the three is an opinion and the
+agent is told not to report it. That is what keeps a browser lens from turning
+into a redesign proposal in the middle of a bug fix.
+
+**Credentials are environment variable names, never values.** `funnel-config
+check` fails on a value in `browser.auth`, and neither agent is given `Bash`, so
+neither can read a secret its dispatch did not already hold.
+
+**`artifactsDir` must be ignored by git.** Playwright MCP writes a snapshot and a
+console log per navigation, and `kit gate` keys its receipts on a working-tree SHA
+computed with `git add -A`, which sees untracked files. Measured on a scratch
+repo: with the directory ignored the SHA is identical before and after a
+navigation writes into it, and with the ignore line removed it changes. Unignored,
+every gate after the first navigation re-runs from scratch and it reads as
+slowness rather than as a misconfiguration, so `funnel-config check` refuses it.
 
 ## Boards
 
@@ -162,13 +224,27 @@ a merge. Admin enforcement is off, so the owner can still push directly.
 ## Tests
 
 ```sh
-python3 tests/test-hooks.py          # 36 cases, half of them "must not block"
-python3 tests/check-eval-schema.py   # eval frontmatter against the harness's allowed keys
-claude plugin validate . --strict    # manifests, skills, agents, commands
+python3 tests/test-hooks.py           # 36 cases, half of them "must not block"
+python3 tests/test-screen-routes.py   # 10 cases: route groups, dynamic segments, the import walk
+python3 tests/test-gate-jobs.py       # 13 cases: that concurrency happens, and that exclusive still means alone
+python3 tests/check-eval-schema.py    # eval frontmatter against the harness's allowed keys
+claude plugin validate . --strict     # manifests, skills, agents, commands
 ```
 
-CI runs all of those plus `bash -n` on every script, `shellcheck`, and a check that no
-shipped text contains an em dash, since the plugin ships a hook that forbids it.
+CI runs all of those plus a syntax check on every script, `shellcheck`, and a check that
+no shipped text contains an em dash, since the plugin ships a hook that forbids it. The
+syntax step dispatches on the shebang, because `bin/` holds both bash and Python and
+`bash -n` on a Python file is a syntax error about the wrong language.
+
+`test-screen-routes.py` builds a throwaway repo per case and resets it to base between
+them. Without that reset each case inherits the previous case's diff, and the suite
+passes or fails for a reason no assertion states, which is how it failed 7 of 10 on the
+first run.
+
+`test-gate-jobs.py` asserts on wall clock and on ordering, never only on the verdict:
+three gates that pass are three gates that pass whether they ran together or not. Three
+two-second gates finish in 2.5s at `gateJobs: 3` and 6.5s at 1, and the exclusive case is
+proven from a file each gate appends to at start and at end, not from timing.
 
 The hook tests exist in that shape on purpose: a guard with a false positive gets
 disabled within a day, so every "must block" case is paired with a "must not block" one.
@@ -181,6 +257,9 @@ disabled within a day, so every "must block" case is paired with a "must not blo
 | skills, agents, commands, hooks, output style, `bin/*` | verified by running them |
 | GitHub Projects v2 board adapter | verified end to end: discover, read, write |
 | review grouping and doc-load numbers | measured on a real branch, reproducible with `kit review deep` |
+| `kit screens` route mapping | 10 cases in CI, plus resolved a real component three levels below its page to `/procurement` in 0.29s |
+| the browser lens | the plumbing is proven: a local server started, polled, navigated, resized, and the layout probe named the overflowing element and the below-fold button. The shared-browser constraint is proven by a two-agent collision test. **Not yet run against a real authenticated app**, so the auth path and the dispatch prompt are unproven |
+| gate concurrency | 13 cases in CI, and measured on the real repo: the `ship` stage runs in **268.7s** against 423.5s for the same four gates in series. 142.5s of that came from dropping a duplicated suite run (`vitest run` and `vitest run --coverage` prove the same 11,419 tests) and 13s from overlapping lint with types |
 | Jira and Azure DevOps adapters | written from the API contract, **never run**, marked so in their own source |
 | `evals/` | schema validated offline, **never run**: `claude plugin eval` is early access and was not enabled on the account this was built from |
 
@@ -195,7 +274,8 @@ disabled within a day, so every "must block" case is paired with a "must not blo
 
 ## Not here yet
 
-A verified Azure DevOps adapter, and a run of the eval suite.
+A verified Azure DevOps adapter, a run of the eval suite, and one run of the browser
+lenses against a real authenticated app.
 
 ## License
 

@@ -6,26 +6,37 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
-
+    "$schema": {
+      "type": "string"
+    },
     "base": {
       "type": "string",
       "description": "The branch every diff and every worktree starts from. Must exist as origin/<base>.",
       "default": "main"
     },
-
     "docs": {
       "type": "object",
       "description": "Repo documents the funnel points at. Every value is a path relative to the repo root and has to exist.",
-      "additionalProperties": { "type": "string" },
+      "additionalProperties": {
+        "type": "string"
+      },
       "properties": {
-        "entry": { "type": "string", "description": "The always-loaded entry file, usually AGENTS.md or CLAUDE.md." },
-        "pipeline": { "type": "string", "description": "The document that owns the flow rules. It outranks the skill where they disagree." },
-        "commits": { "type": "string" },
-        "index": { "type": "string" }
+        "entry": {
+          "type": "string",
+          "description": "The always-loaded entry file, usually AGENTS.md or CLAUDE.md."
+        },
+        "pipeline": {
+          "type": "string",
+          "description": "The document that owns the flow rules. It outranks the skill where they disagree."
+        },
+        "commits": {
+          "type": "string"
+        },
+        "index": {
+          "type": "string"
+        }
       }
     },
-
     "branch": {
       "type": "object",
       "additionalProperties": false,
@@ -38,11 +49,12 @@
         "prefix": {
           "type": "object",
           "description": "One prefix per kind of change. The keys are what `worktree add --kind` accepts.",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       }
     },
-
     "worktree": {
       "type": "object",
       "additionalProperties": false,
@@ -54,7 +66,9 @@
         },
         "setup": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Commands run inside a fresh worktree. If any fails the worktree is removed, so a half-installed environment never survives."
         },
         "skipSetupWhenDocOnly": {
@@ -64,7 +78,6 @@
         }
       }
     },
-
     "gates": {
       "type": "object",
       "description": "The commands that actually gate this repo. A gate is run by `kit gate` and gets a receipt keyed by the working tree's SHA, so the same command over the same tree is never paid twice.",
@@ -72,35 +85,65 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["cmd"],
+        "required": [
+          "cmd"
+        ],
         "properties": {
           "cmd": {
             "type": "string",
             "description": "Run through a shell from the repo root, so a compound command works. Placeholder: {base}."
+          },
+          "exclusive": {
+            "type": "boolean",
+            "description": "This gate must run alone. Set it on anything that writes where another gate reads or writes: a coverage report directory, a build output, a shared test cache. Whether two commands can share a working tree depends on what they write, which is why this is declared and not inferred."
           }
         }
       }
     },
-
     "stages": {
       "type": "object",
       "description": "Which gates each funnel stage runs. Every name has to be a key of `gates`. The fix-round stage is where the incremental forms belong, because rounds are where the repetition is.",
-      "additionalProperties": { "type": "array", "items": { "type": "string" } },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
       "properties": {
-        "implement_first_pass": { "type": "array", "items": { "type": "string" } },
-        "implement_fix_round": { "type": "array", "items": { "type": "string" } },
-        "tests": { "type": "array", "items": { "type": "string" } },
-        "ship": { "type": "array", "items": { "type": "string" } }
+        "implement_first_pass": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "implement_fix_round": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ship": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
-
     "slices": {
       "type": "object",
       "description": "Named git diff ranges. Each value is appended to `git diff`, so it carries both the range and the pathspec: `{base}...HEAD -- src ':(exclude)src/tests'`. A slice whose paths do not exist produces an empty diff, which downstream reads as nothing to review, so `kit config check` verifies the paths.",
       "minProperties": 1,
-      "additionalProperties": { "type": "string" }
+      "additionalProperties": {
+        "type": "string"
+      }
     },
-
     "lenses": {
       "type": "object",
       "description": "One entry per review lens. Lenses that share a slice are dispatched together as numbered parts of one contract, which is why the slice is the grouping key and not the lens.",
@@ -108,63 +151,228 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["slice"],
+        "required": [
+          "slice"
+        ],
         "properties": {
-          "slice": { "type": "string", "description": "A key of `slices`." },
+          "slice": {
+            "type": "string",
+            "description": "A key of `slices`."
+          },
           "docs": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "Only the documents this lens needs. The blanket set is the largest single cost in a review, paid once per dispatch at the most expensive tier."
           },
           "grepTargets": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "Prose surfaces the claims lens checks for sentences the change falsified. `kit review` greps them for the declaration names and multi-digit literals the diff touched and hands over a candidate list, instead of the lens reading whole files."
           }
         }
       }
     },
-
     "effort": {
       "type": "object",
       "description": "Which lenses each effort level runs. The level buys width in the first pass, not permission to iterate.",
-      "additionalProperties": { "type": "array", "items": { "type": "string" } },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
       "properties": {
-        "light": { "type": "array", "items": { "type": "string" } },
-        "standard": { "type": "array", "items": { "type": "string" } },
-        "deep": { "type": "array", "items": { "type": "string" } }
+        "light": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "standard": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deep": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
-
     "maxRounds": {
       "type": "integer",
       "minimum": 1,
       "description": "Cap on fix rounds. At the cap every open finding gets a written decision; silent discard is prohibited.",
       "default": 2
     },
-
     "maxParallelAgents": {
       "type": "integer",
       "minimum": 1,
       "description": "Concurrency ceiling for read-only fan-out. Set it from the machine, not from the number of lenses: 3 to 5 is where published guidance lands, and a 6 GB box crashes above 4.",
       "default": 3
     },
-
+    "gateJobs": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "How many non-exclusive gates of one stage may run at once. Defaults to 1, which is strictly serial and is what every version before this did. Raise it only after checking that the stage's gates do not write over each other."
+    },
+    "browser": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The browser lenses. Off unless enabled, because a lens pointed at a dev server that does not exist fails on first use.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "baseUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Where the app answers once start has run."
+        },
+        "start": {
+          "type": "string",
+          "description": "Command that brings the app up. Never run by a gate: the lens owns it."
+        },
+        "readyPath": {
+          "type": "string",
+          "description": "Path polled until the app answers."
+        },
+        "readyTimeout": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "artifactsDir": {
+          "type": "string",
+          "description": "Where Playwright MCP writes snapshots, console logs and screenshots. Must be ignored by git, or its output changes the working-tree SHA and invalidates every gate receipt."
+        },
+        "efforts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Effort levels that pay for a browser. Each must name a level in effort."
+        },
+        "appDir": {
+          "type": "string",
+          "description": "Router root, used to turn an entry file into a URL."
+        },
+        "entryFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "screenGlobs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "excludeGlobs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "routeParams": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "A real value per dynamic segment name. A segment with no value is reported blocked rather than visited as the literal [id]."
+        },
+        "routes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Source path prefix to URL, for screens the import walk cannot reach."
+        },
+        "maxRoutes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "viewports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "width",
+              "height"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Names of environment variables, never values. funnel-config check refuses a value here.",
+          "properties": {
+            "loginPath": {
+              "type": "string"
+            },
+            "userEnv": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_]*$"
+            },
+            "passEnv": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_]*$"
+            }
+          }
+        },
+        "uxDocs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "This repo's frontend and design documents. The UX lens cites them, so a finding is a deviation from the repo rather than a preference."
+        }
+      }
+    },
     "flaky": {
       "type": "array",
       "description": "Known-flaky test files. A gate red in a file the diff never touched is a wasted fix round, so `kit gate` reports whether a failing file is on this list and whether this branch can even reach it. Each entry carries why, so the list can be emptied instead of growing.",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["file", "why"],
+        "required": [
+          "file",
+          "why"
+        ],
         "properties": {
-          "file": { "type": "string" },
-          "issue": { "type": "string" },
-          "why": { "type": "string" }
+          "file": {
+            "type": "string"
+          },
+          "issue": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          }
         }
       }
     },
-
     "board": {
       "type": "string",
       "description": "Path to the board mapping, relative to the checkout that owns the config. Absent or missing means the funnel skips board moves instead of failing.",

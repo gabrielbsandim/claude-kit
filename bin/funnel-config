@@ -84,7 +84,21 @@ defaults_json() {
       effort: { light: ["correctness"], standard: ["correctness"], deep: ["correctness"] },
       maxRounds: 2,
       maxParallelAgents: 3,
+      # 1 is strictly serial, which is what every version before this did. A repo
+      # raises it after checking that its gates do not write over each other.
+      gateJobs: 1,
       flaky: [],
+      # Off by default and deliberately so: a browser lens pointed at a dev
+      # server that does not exist fails on first use, and a lens that fails on
+      # first use is a lens the next task turns off.
+      browser: {
+        enabled: false, artifactsDir: ".playwright-mcp", appDir: "src/app",
+        maxRoutes: 6, efforts: ["standard","deep"],
+        viewports: [
+          { name: "mobile",  width: 390,  height: 844 },
+          { name: "desktop", width: 1440, height: 900 }
+        ]
+      },
       board: ".claude/board.json"
     }'
 }
@@ -125,7 +139,7 @@ resolve() {
     subst'
 }
 
-KNOWN_KEYS='["$schema","base","docs","branch","worktree","gates","stages","slices","lenses","effort","maxRounds","maxParallelAgents","flaky","board"]'
+KNOWN_KEYS='["$schema","base","docs","branch","worktree","gates","stages","slices","lenses","effort","maxRounds","maxParallelAgents","gateJobs","flaky","browser","board"]'
 
 cmd="${1:-print}"
 case "$cmd" in
@@ -248,6 +262,134 @@ case "$cmd" in
         status=1
       }
     done < <(merged | jq -r '.lenses.claims.grepTargets[]? // empty')
+
+    jobs="$(merged | jq -r '.gateJobs // 1')"
+    case "$jobs" in
+      *[!0-9]*|"") printf 'gateJobs must be a positive integer, got "%s"\n' "$jobs" >&2; status=1 ;;
+      *) [ "$jobs" -ge 1 ] || { printf 'gateJobs must be at least 1\n' >&2; status=1; } ;;
+    esac
+
+    # One gate's command being a prefix of another's in the same stage means the
+    # stage pays for the same work twice. The case this was written for is a suite
+    # run plain and then run again under a coverage flag: same 838 files, same
+    # 11,419 tests, and the second run subsumes the first.
+    #
+    # Comparing the configured strings does not find it. `npm test` and
+    # `npm run test:coverage` share no prefix; `vitest run` and
+    # `vitest run --coverage` do. So a package-manager script is expanded once
+    # through package.json before the comparison, which is the level the
+    # duplication actually lives at.
+    expand_script() {
+      local c="$1" name rest
+      [ -f "$REPO_ROOT/package.json" ] || { printf '%s' "$c"; return; }
+      case "$c" in
+        "npm run "*|"pnpm run "*|"yarn run "*|"bun run "*) rest="${c#* run }" ;;
+        "npm "*|"pnpm "*|"yarn "*|"bun "*)                 rest="${c#* }" ;;
+        *) printf '%s' "$c"; return ;;
+      esac
+      name="${rest%% *}"
+      local body
+      body="$(jq -r --arg n "$name" '.scripts[$n] // empty' "$REPO_ROOT/package.json" 2>/dev/null || true)"
+      if [ -n "$body" ]; then printf '%s' "$body"; else printf '%s' "$c"; fi
+    }
+    while IFS= read -r stage; do
+      [ -z "$stage" ] && continue
+      names="$(merged | jq -r --arg s "$stage" '.stages[$s][]')"
+      for a in $names; do
+        for b in $names; do
+          [ "$a" = "$b" ] && continue
+          ca="$(expand_script "$(merged | resolve | jq -r --arg g "$a" '.gates[$g].cmd // ""')")"
+          cb="$(expand_script "$(merged | resolve | jq -r --arg g "$b" '.gates[$g].cmd // ""')")"
+          { [ -z "$ca" ] || [ -z "$cb" ]; } && continue
+          case "$cb" in
+            "$ca "*)
+              printf 'stage    %s runs "%s" and then "%s", which expands to the first command plus a flag ("%s" then "%s"), so the stage pays for that work twice\n' \
+                "$stage" "$a" "$b" "$ca" "$cb" >&2
+              status=1 ;;
+          esac
+        done
+      done
+    done < <(merged | jq -r '.stages // {} | keys[]')
+
+    if [ "$jobs" -gt 1 ] 2>/dev/null; then
+      while IFS= read -r stage; do
+        [ -z "$stage" ] && continue
+        together=""
+        for g in $(merged | jq -r --arg s "$stage" '.stages[$s][]'); do
+          if [ "$(merged | jq -r --arg g "$g" '.gates[$g].exclusive // false')" = true ]; then
+            together="$together |$g alone|"
+          else
+            together="$together $g"
+          fi
+        done
+        printf 'stage    %-22s at gateJobs=%s: %s\n' "$stage" "$jobs" "$together"
+      done < <(merged | jq -r '.stages // {} | keys[]')
+    fi
+
+    # The browser lens, and the one check here that is not about the lens working:
+    # Playwright MCP writes a snapshot and a console log per navigation into
+    # artifactsDir. `kit gate` keys its receipts on a working-tree SHA computed
+    # with `git add -A`, which sees untracked files, so an artifactsDir this repo
+    # does not ignore makes every gate after the first navigation re-run from
+    # scratch. That reads as slowness, never as a misconfiguration.
+    artifacts="$(merged | jq -r '.browser.artifactsDir // empty')"
+    if [ -n "$artifacts" ]; then
+      if git -C "$REPO_ROOT" check-ignore -q "$artifacts/" 2>/dev/null; then
+        printf 'browser  %s ignored by git, so gate receipts survive a navigation\n' "$artifacts"
+      else
+        printf 'browser  %s is not in .gitignore: browser output would change the working tree SHA and invalidate every gate receipt\n' "$artifacts" >&2
+        status=1
+      fi
+    fi
+
+    if [ "$(merged | jq -r '.browser.enabled // false')" = true ]; then
+      for pair in baseUrl:url start:command; do
+        key="${pair%%:*}"; what="${pair##*:}"
+        if [ -z "$(merged | jq -r --arg k "$key" '.browser[$k] // empty')" ]; then
+          printf 'browser  enabled but names no %s (browser.%s)\n' "$what" "$key" >&2
+          status=1
+        fi
+      done
+      app="$(merged | jq -r '.browser.appDir // empty')"
+      if [ -n "$app" ] && [ ! -d "$REPO_ROOT/$app" ]; then
+        printf 'browser  appDir "%s" does not exist, so no route can be derived from a changed component\n' "$app" >&2
+        status=1
+      fi
+      while IFS= read -r v; do
+        [ -z "$v" ] && continue
+        printf 'browser  viewport "%s" is missing width or height\n' "$v" >&2
+        status=1
+      done < <(merged | jq -r '.browser.viewports // [] | .[] | select((.width // 0) == 0 or (.height // 0) == 0) | (.name // "unnamed")')
+      # A credential belongs in the environment and its name belongs here. This
+      # refuses the config that would otherwise put a password in a git object.
+      while IFS= read -r pair; do
+        [ -z "$pair" ] && continue
+        key="${pair%%=*}"; val="${pair#*=}"
+        case "$val" in
+          ""|*[!A-Za-z0-9_]*)
+            printf 'browser  auth.%s must be the NAME of an environment variable, never a value: got "%s"\n' "$key" "$val" >&2
+            status=1 ;;
+        esac
+      done < <(merged | jq -r '(.browser.auth // {}) | to_entries[] | select(.key | endswith("Env")) | "\(.key)=\(.value)"')
+      while IFS= read -r level; do
+        [ -z "$level" ] && continue
+        if [ "$(merged | jq -r --arg l "$level" '.effort[$l] // "MISSING"')" = MISSING ]; then
+          printf 'browser  efforts names "%s", which is not an effort level, so the screen lenses never run\n' "$level" >&2
+          status=1
+        fi
+      done < <(merged | jq -r '.browser.efforts // [] | .[]')
+      routes_ok=1
+      while IFS= read -r r; do
+        [ -z "$r" ] && continue
+        case "$r" in /*) ;; *) printf 'browser  routes value "%s" is not a path starting with /\n' "$r" >&2; routes_ok=0 ;; esac
+      done < <(merged | jq -r '(.browser.routes // {}) | to_entries[] | .value')
+      [ $routes_ok -eq 1 ] || status=1
+      printf 'browser  enabled, %s, up to %s route(s) per review\n' \
+        "$(merged | jq -r '.browser.baseUrl // "no baseUrl"')" \
+        "$(merged | jq -r '.browser.maxRoutes // 6')"
+    else
+      printf 'browser  disabled, the review skips the screen lenses\n'
+    fi
 
     board="$(merged | jq -r '.board // empty')"
     if [ -n "$board" ] && [ -f "$REPO_ROOT/$board" ]; then

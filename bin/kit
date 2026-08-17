@@ -6,6 +6,7 @@
 #   kit gate <stage>           run a stage's gates, with receipts
 #   kit worktree gc            remove the provably finished worktrees
 #   kit review <level>         the grouped review dispatch plan
+#   kit screens                routes the changed screens are reachable at
 #   kit board <status> --issue N
 #   kit doctor                 is this machine ready
 #   kit setup                  put `kit` on PATH
@@ -27,6 +28,7 @@ usage() { awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$KI
 cmd="${1:-}"; shift || true
 case "$cmd" in
   config)   exec "$KIT_BIN/funnel-config" "$@" ;;
+  screens)  exec "$KIT_BIN/screen-routes" "$@" ;;
   gate)     exec "$KIT_BIN/gate" "$@" ;;
   worktree) exec "$KIT_BIN/worktree" "$@" ;;
   board)    exec "$KIT_BIN/board-move" "$@" ;;
