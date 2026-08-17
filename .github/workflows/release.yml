@@ -1,0 +1,74 @@
+name: release
+
+# Fires only after `validate` succeeds on main, so a broken main cannot produce a
+# release. `workflow_run` is what makes that ordering real: a plain `push` trigger
+# would race the checks and tag whatever landed.
+on:
+  workflow_run:
+    workflows: [validate]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    # Three conditions, and the last two are the security ones. `branches: [main]`
+    # filters on the run's head_branch, and a pull request from a fork whose branch is
+    # itself named `main` matches it. Without these, such a pull request would run this
+    # job, with contents: write, over the fork's code and its plugin.json version.
+    # Requiring event == push and the head repository to be this repository closes it.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The commit validate actually passed on, not whatever is at the head of main
+          # by the time this runs. A SHA, so it is safe to interpolate.
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Read the declared version
+        id: read
+        run: |
+          version="$(jq -r '.version // empty' .claude-plugin/plugin.json)"
+          if [ -z "$version" ]; then
+            echo "plugin.json declares no version" >&2
+            exit 1
+          fi
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "version '$version' is not x.y.z" >&2; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # The version in plugin.json is the release trigger, and bumping it is a
+      # deliberate act. A push that does not bump it produces no tag and no release,
+      # which is why this workflow never commits anything: nothing here needs to write
+      # to main, so branch protection needs no exception for a bot.
+      - name: Tag and release, if this version is new
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.read.outputs.version }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -e
+          tag="v$VERSION"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "$tag already exists, nothing to release"
+            exit 0
+          fi
+          previous="$(git tag --sort=-v:refname | head -1)"
+          git tag -a "$tag" -m "$tag" "$SHA"
+          git push origin "$tag"
+          if [ -n "$previous" ]; then
+            gh release create "$tag" --target "$SHA" --title "$tag" \
+              --generate-notes --notes-start-tag "$previous"
+          else
+            gh release create "$tag" --target "$SHA" --title "$tag" --generate-notes
+          fi
+          echo "released $tag at $SHA"

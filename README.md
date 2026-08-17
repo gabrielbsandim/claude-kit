@@ -146,6 +146,19 @@ one. The review stage is the opposite: the work is already committed, the plan i
 by `kit review --dispatches`, the dispatches are read-only and disjoint by construction,
 and nothing in it needs a human until the findings come back.
 
+## Releasing
+
+The version in `.claude-plugin/plugin.json` is the release trigger. Bump it, merge to main,
+and `release.yml` tags `v<version>` and cuts a GitHub release with generated notes once
+`validate` has passed on that commit. A push that does not bump the version produces
+nothing, which is the point: the tag says what shipped, not how many times main moved.
+
+Nothing in CI commits to main, so branch protection needs no bot exception.
+
+`main` is protected: the three `validate` jobs are required and have to be up to date with
+main, force pushes and deletions are refused, and conversations have to be resolved before
+a merge. Admin enforcement is off, so the owner can still push directly.
+
 ## Tests
 
 ```sh
