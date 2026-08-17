@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/gabrielbsandim/claude-kit/main/templates/funnel.schema.json",
+  "title": "claude-kit funnel config",
+  "description": "Describes one repository to the task funnel: its base branch, its gate commands, which paths are source and which are tests, and which document each review lens reads. `kit config check` validates the same things this schema does, plus the ones a schema cannot see: whether the branch has a remote, whether the paths exist, and whether every name cross-references something real.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+
+    "base": {
+      "type": "string",
+      "description": "The branch every diff and every worktree starts from. Must exist as origin/<base>.",
+      "default": "main"
+    },
+
+    "docs": {
+      "type": "object",
+      "description": "Repo documents the funnel points at. Every value is a path relative to the repo root and has to exist.",
+      "additionalProperties": { "type": "string" },
+      "properties": {
+        "entry": { "type": "string", "description": "The always-loaded entry file, usually AGENTS.md or CLAUDE.md." },
+        "pipeline": { "type": "string", "description": "The document that owns the flow rules. It outranks the skill where they disagree." },
+        "commits": { "type": "string" },
+        "index": { "type": "string" }
+      }
+    },
+
+    "branch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "description": "Branch name template. Placeholders: {prefix} {issue} {slug}.",
+          "default": "{prefix}/{issue}-{slug}"
+        },
+        "prefix": {
+          "type": "object",
+          "description": "One prefix per kind of change. The keys are what `worktree add --kind` accepts.",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+
+    "worktree": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Where the worktree goes. Relative paths resolve against the main checkout, not the current directory. Placeholders: {repo} {issue} {slug}.",
+          "default": "../{repo}-{issue}"
+        },
+        "setup": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Commands run inside a fresh worktree. If any fails the worktree is removed, so a half-installed environment never survives."
+        },
+        "skipSetupWhenDocOnly": {
+          "type": "boolean",
+          "description": "A doc-only scope skips setup, and then no gate command can run either: the gate becomes the commit alone.",
+          "default": true
+        }
+      }
+    },
+
+    "gates": {
+      "type": "object",
+      "description": "The commands that actually gate this repo. A gate is run by `kit gate` and gets a receipt keyed by the working tree's SHA, so the same command over the same tree is never paid twice.",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["cmd"],
+        "properties": {
+          "cmd": {
+            "type": "string",
+            "description": "Run through a shell from the repo root, so a compound command works. Placeholder: {base}."
+          }
+        }
+      }
+    },
+
+    "stages": {
+      "type": "object",
+      "description": "Which gates each funnel stage runs. Every name has to be a key of `gates`. The fix-round stage is where the incremental forms belong, because rounds are where the repetition is.",
+      "additionalProperties": { "type": "array", "items": { "type": "string" } },
+      "properties": {
+        "implement_first_pass": { "type": "array", "items": { "type": "string" } },
+        "implement_fix_round": { "type": "array", "items": { "type": "string" } },
+        "tests": { "type": "array", "items": { "type": "string" } },
+        "ship": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "slices": {
+      "type": "object",
+      "description": "Named git diff ranges. Each value is appended to `git diff`, so it carries both the range and the pathspec: `{base}...HEAD -- src ':(exclude)src/tests'`. A slice whose paths do not exist produces an empty diff, which downstream reads as nothing to review, so `kit config check` verifies the paths.",
+      "minProperties": 1,
+      "additionalProperties": { "type": "string" }
+    },
+
+    "lenses": {
+      "type": "object",
+      "description": "One entry per review lens. Lenses that share a slice are dispatched together as numbered parts of one contract, which is why the slice is the grouping key and not the lens.",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slice"],
+        "properties": {
+          "slice": { "type": "string", "description": "A key of `slices`." },
+          "docs": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Only the documents this lens needs. The blanket set is the largest single cost in a review, paid once per dispatch at the most expensive tier."
+          },
+          "grepTargets": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Prose surfaces the claims lens checks for sentences the change falsified. `kit review` greps them for the declaration names and multi-digit literals the diff touched and hands over a candidate list, instead of the lens reading whole files."
+          }
+        }
+      }
+    },
+
+    "effort": {
+      "type": "object",
+      "description": "Which lenses each effort level runs. The level buys width in the first pass, not permission to iterate.",
+      "additionalProperties": { "type": "array", "items": { "type": "string" } },
+      "properties": {
+        "light": { "type": "array", "items": { "type": "string" } },
+        "standard": { "type": "array", "items": { "type": "string" } },
+        "deep": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "maxRounds": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Cap on fix rounds. At the cap every open finding gets a written decision; silent discard is prohibited.",
+      "default": 2
+    },
+
+    "maxParallelAgents": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Concurrency ceiling for read-only fan-out. Set it from the machine, not from the number of lenses: 3 to 5 is where published guidance lands, and a 6 GB box crashes above 4.",
+      "default": 3
+    },
+
+    "flaky": {
+      "type": "array",
+      "description": "Known-flaky test files. A gate red in a file the diff never touched is a wasted fix round, so `kit gate` reports whether a failing file is on this list and whether this branch can even reach it. Each entry carries why, so the list can be emptied instead of growing.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "why"],
+        "properties": {
+          "file": { "type": "string" },
+          "issue": { "type": "string" },
+          "why": { "type": "string" }
+        }
+      }
+    },
+
+    "board": {
+      "type": "string",
+      "description": "Path to the board mapping, relative to the checkout that owns the config. Absent or missing means the funnel skips board moves instead of failing.",
+      "default": ".claude/board.json"
+    }
+  }
+}

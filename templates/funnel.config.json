@@ -38,7 +38,7 @@
   "slices": {
     "src": "{base}...HEAD -- src ':(exclude)src/tests'",
     "tests": "{base}...HEAD -- src/tests",
-    "surfaces": "{base}...HEAD -- docs src/lib/helpContent.ts src/lib/knowledge",
+    "surfaces": "{base}...HEAD -- docs README.md",
     "all": "{base}...HEAD"
   },
 
@@ -55,7 +55,7 @@
     "claims": {
       "slice": "all",
       "docs": [],
-      "grepTargets": ["docs", "src/lib/helpContent.ts", "src/lib/knowledge"]
+      "grepTargets": ["docs", "README.md"]
     }
   },
 
@@ -76,13 +76,7 @@
   "maxRounds": 2,
   "maxParallelAgents": 3,
 
-  "flaky": [
-    {
-      "file": "src/tests/components/Modal.test.tsx",
-      "issue": "512",
-      "why": "intermittent, unrelated to any diff"
-    }
-  ],
+  "flaky": [],
 
   "board": ".claude/board.json"
 }

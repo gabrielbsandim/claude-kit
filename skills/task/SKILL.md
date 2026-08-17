@@ -76,9 +76,25 @@ pass**, not permission to iterate, because a round is the expensive unit.
 - No worktree yet. Triage and spec change no file, and the environment is paid
   for only after the spec gate says the task is real.
 
+## The four agents this skill dispatches
+
+Each stage has a named agent that ships with the plugin, and the dispatch has to name it,
+because a generic "dispatch a planning subagent" resolves to a general-purpose agent and
+the standing instructions in these files are lost:
+
+| Stage | Agent | Carries |
+| --- | --- | --- |
+| 1 | `claude-kit:funnel-triage` | the return shape, the verdicts, the invariant table, the sizing rule |
+| 2 | `claude-kit:funnel-implementer` | the prohibitions, the bug-reproduction-first rule, what to do with a red gate |
+| 3 | `claude-kit:funnel-test-writer` | what to test in what order, and the two failure modes that are the writer's own |
+| 4 | `claude-kit:funnel-reviewer` | the reading discipline, the grading rubric, CONFIRMED against PLAUSIBLE |
+
+The task-specific half still travels in the prompt. The agent carries what is true of that
+stage in every task; the dispatch carries this task.
+
 ## Stage 1 · Triage and spec, one read-only dispatch
 
-One dispatch, structured return. Triage and spec used to be two, over the same
+One dispatch to `funnel-triage`, structured return. Triage and spec used to be two, over the same
 material, each paying the repo's mandatory doc load; the gate below reads the
 `verdict` field before the spec is used, so nothing is lost by fusing them.
 
@@ -158,7 +174,7 @@ another cycle must not pick up. Not earlier: triage can return `BLOCKED` or
 `ALREADY_DONE`, and a card stranded in progress for a task that died is the
 stale claim the pipeline document warns about.
 
-Dispatch the ENTIRE spec to an implementer working in the worktree.
+Dispatch the ENTIRE spec to `funnel-implementer`, working in the worktree.
 
 **GATE**: `kit gate implement_first_pass`, then the work **committed** per the
 repo's commit convention. The review stage diffs commits, so uncommitted work is
@@ -180,8 +196,8 @@ carries through the rest of the funnel.
 
 ## Stage 3 · Tests, fresh eyes, in parallel with the code review
 
-On `standard` and `deep`, dispatch spec plus the list of implemented files to a
-test writer that did not write the code. On `light`, the implementer's tests
+On `standard` and `deep`, dispatch spec plus the list of implemented files to
+`funnel-test-writer`, which did not write the code. On `light`, the implementer's tests
 stand.
 
 **This runs concurrently with the stage 4 dispatches whose slices exclude
@@ -206,8 +222,13 @@ kit review <level> --since <sha reviewed last round>   # a fix round
 
 That prints one dispatch per slice, each carrying every lens that reads that
 slice as a **numbered part of one contract**, with the diff already written to a
-file and the exact document list for the group. Give each dispatch its block
-verbatim.
+file and the exact document list for the group. Give each block, verbatim, to its own
+`funnel-reviewer`.
+
+There is also `workflows/review-fanout.js`, which runs this stage as a deterministic
+fan-out and adds a verifier per finding whose instruction is to refute it. Use it when the
+review is the whole job and nothing needs asking; use the dispatches above when you are
+inside a task and want to keep the findings in your own context.
 
 Fan-out per lens is not a neutral choice, it is the thing that was measured and
 removed: two reviewer prompts fused into one that returns "Part 1 spec
