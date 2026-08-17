@@ -2,7 +2,7 @@
 # One port, three adapters. The funnel knows the words "in_progress" and
 # "in_review" and nothing about any tracker.
 #
-#   board-move in_progress --issue 510
+#   board-move in_progress --issue 510   moves the card and assigns it
 #   board-move in_review --issue 510
 #   board-move --discover            print the ids to paste into board.json
 #   board-move --where --issue 510   what the tracker says the status is now
@@ -132,6 +132,28 @@ case "$provider" in
         updateProjectV2ItemFieldValue(input:{projectId:$project,itemId:$item,fieldId:$field,value:{singleSelectOptionId:$value}}){
           projectV2Item{ id } } }' --jq '.data.updateProjectV2ItemFieldValue.projectV2Item.id' >/dev/null
     printf 'board    #%s -> %s\n' "$issue" "$status"
+
+    # An issue in progress with no assignee is the same stale claim the column exists to
+    # prevent: the next cycle can see that something is being worked on and not by whom.
+    # Only on the way in. Review does not change who owns the work, and Todo has no owner
+    # yet by definition. Set "assignOnProgress": false in board.json to turn this off.
+    if [ "$status" = in_progress ] && [ "$(jq -r '.assignOnProgress // true' "$BOARD")" = true ]; then
+      who="$(jq -r '.assignee // empty' "$BOARD")"
+      [ -n "$who" ] || who="$(gh api user --jq .login 2>/dev/null || true)"
+      if [ -n "$who" ]; then
+        read -r owner repo <<<"$(owner_repo)"
+        current="$(gh issue view "$issue" --repo "$owner/$repo" --json assignees --jq '[.assignees[].login] | join(",")' 2>/dev/null || true)"
+        if [ -z "$current" ]; then
+          if gh issue edit "$issue" --repo "$owner/$repo" --add-assignee "$who" >/dev/null 2>&1; then
+            printf 'assign   #%s -> %s\n' "$issue" "$who"
+          else
+            note "could not assign #$issue to $who; the status move already landed"
+          fi
+        else
+          printf 'assign   #%s already assigned to %s, left alone\n' "$issue" "$current"
+        fi
+      fi
+    fi
     ;;
 
   jira)

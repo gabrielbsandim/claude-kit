@@ -94,6 +94,12 @@ tracker. It reads `.claude/board.json` and calls one adapter.
 | `azure-devops` | `az boards work-item update --id N --state`, needs the `azure-devops` extension. | written from the contract, unverified |
 | `none` | no-op with a message | |
 
+The in-progress move also **assigns** the issue, to `assignee` from `board.json` or to
+whoever `gh` is authenticated as, and only if it has no assignee yet. An issue in progress
+with no owner is the same stale claim the column exists to prevent: the next cycle can see
+that something is being worked on and not by whom. Turn it off with
+`"assignOnProgress": false`. The review move never touches the assignee.
+
 In progress is written at the top of the implement stage, right after the
 worktree exists and before the implementer runs, which is the first instant at
 which there is work another cycle must not pick up. Not earlier: triage can

@@ -4,6 +4,8 @@
   "repo": "REPO",
   "projectId": "PVT_xxxxxxxx",
   "statusFieldId": "PVTSSF_xxxxxxxx",
+  "assignOnProgress": true,
+  "assignee": "",
   "columns": {
     "in_progress": "00000000",
     "in_review": "00000000"
