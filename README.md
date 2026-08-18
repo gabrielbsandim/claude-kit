@@ -82,12 +82,13 @@ names but the repo lacks, and a stage that runs the same work twice.
 
 ## What is scripted, and what is left to judgment
 
-Seven things are commands rather than instructions, because prose does not execute:
+Ten things are commands rather than instructions, because prose does not execute:
 
 | Command | What it removes |
 | --- | --- |
 | `kit worktree add/rm/gc` | the teardown nobody does. `gc` removes only what it can prove is finished and says why it kept the rest, and the funnel runs it at ship. While the teardown step was `rm`, which could not succeed once the pull request existed, it left 27 orphans and 35 GB behind. |
 | `kit version <declared>` | a session silently running an old copy of this plugin. It compares the version the skill declares, the version of the `kit` on PATH and the newest installed, and names which of the two fixes applies. |
+| `kit reload` | the three-step dance after a release. It updates, relinks, and prints the restart line instead of implying a session can reload itself. |
 | `kit issues related/orphans/tree` | a second issue for work already on the board, and an issue with no parent. Ranking is rarity-weighted, so the file every issue names counts for almost nothing and the file two issues name decides. |
 | `kit gate <stage>` | paying twice for the same check. Receipts are keyed by the working tree's SHA, so the pre-push check skips what the implement gate just proved. `gateJobs` runs a stage's independent gates at once; `exclusive` keeps one alone. |
 | `kit review <level>` | one dispatch per reviewer and a blanket document load. One dispatch per slice instead, with the diff written to a file so no reviewer runs `git`. |
@@ -178,8 +179,34 @@ Two are registered, each protecting a property the funnel depends on:
   and `--no-verify`. A gate on a green suite is worth exactly what that suite is
   hard to fake. It also blocks `git push --force` without `--force-with-lease`.
 
-**`no-em-dash`** ships unregistered, since it enforces house style rather than
-correctness. Register it if you want it.
+Two more ship unregistered, because one is house style and the other updates
+software without being asked:
+
+- **`no-em-dash`** enforces house style rather than correctness.
+- **`plugin-freshness`** is a `SessionStart` hook that updates this plugin, relinks
+  the `kit` on PATH, and says in the session's own context when the skills it loaded
+  are the previous version. It cannot make a running session current, because
+  `claude plugin update` prints "restart required to apply" and means it. What it can
+  do is stop the staleness from being silent, and fix the PATH half, which is live
+  immediately. It is silent when nothing changed, runs the update at most once every
+  six hours, holds a lock so two sessions cannot both write the cache, and exits zero
+  on every failure path including offline. Registering it makes `main` your release
+  channel, which is only sane because the three `validate` jobs gate `main`.
+
+```jsonc
+"SessionStart": [
+  { "matcher": "startup|resume", "hooks": [
+      { "type": "command", "timeout": 90,
+        "command": "python3 ~/.claude/plugins/cache/claude-kit/claude-kit/<version>/hooks/plugin-freshness.py" } ] }
+]
+```
+
+The manual half is one command, and it prints the one line a session cannot run for
+itself:
+
+```sh
+kit reload      # update, relink kit, then `exec claude -c` in your terminal
+```
 
 ## Output style
 
@@ -242,6 +269,7 @@ python3 tests/test-gate-jobs.py        # 14 cases: that concurrency happens, and
 python3 tests/test-worktree-state.py   # 23 cases: what teardown will and will not delete
 python3 tests/test-kit-version.py      # 19 cases: the three copies of this plugin, and the skill literal
 python3 tests/test-issues.py           # 17 cases: what counts as the same work, and what a false no costs
+python3 tests/test-plugin-freshness.py # 27 cases, most of them "must stay silent and must not fail"
 python3 tests/check-eval-schema.py     # eval frontmatter against the harness's allowed keys
 claude plugin validate . --strict      # manifests, skills, agents, commands
 ```

@@ -74,6 +74,9 @@ jobs:
       - name: Issue overlap scoring
         run: python3 tests/test-issues.py
 
+      - name: Plugin freshness hook
+        run: python3 tests/test-plugin-freshness.py
+
       - name: Eval suite schema
         run: |
           pip install --quiet pyyaml

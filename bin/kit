@@ -13,6 +13,7 @@
 #   kit issues tree <n>        an epic and its children, with state
 #   kit doctor                 is this machine ready
 #   kit version [expected]     which copy is running, and whether it is the newest
+#   kit reload                 update the plugin, relink `kit`, print the restart line
 #   kit setup                  put `kit` on PATH
 set -euo pipefail
 
@@ -98,6 +99,39 @@ case "$cmd" in
     fi
     [ $stale -eq 0 ] && printf 'up to date\n'
     exit $((stale * 3))
+    ;;
+
+  # The two halves of "make this machine current", in the order they can be done.
+  # There is no third half: `claude plugin update` prints "restart required to
+  # apply", and a session cannot restart itself, so the last step is one line the
+  # user runs in their own terminal. Printing it beats pretending.
+  reload)
+    id="${CLAUDE_KIT_PLUGIN_ID:-claude-kit@claude-kit}"
+    name="${id%@*}"
+    cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+    target="${1:-$HOME/.local/bin}"
+
+    before="$(ls -d "$cfg"/plugins/cache/*/"$name"/*/ 2>/dev/null | sed 's|/$||;s|.*/||' | sort -V | tail -1)"
+    if command -v claude >/dev/null; then
+      claude plugin update "$id" -y 2>&1 | tail -2
+    else
+      printf 'claude is not on PATH, so the update half cannot run here\n' >&2
+    fi
+    after="$(ls -d "$cfg"/plugins/cache/*/"$name"/*/ 2>/dev/null | sed 's|/$||;s|.*/||' | sort -V | tail -1)"
+    [ -n "$after" ] || die "no installed copy of $name under $cfg/plugins"
+
+    root="$(ls -d "$cfg"/plugins/cache/*/"$name"/"$after"/ 2>/dev/null | head -1)"
+    "$root/bin/kit" setup "$target" >/dev/null
+    printf '\nkit        %s  (relinked, live now)\n' "$after"
+
+    if [ "$before" != "$after" ]; then
+      printf 'plugin     %s -> %s on disk\n' "${before:-none}" "$after"
+      printf '\nThe skills and agents in THIS session are still %s, and nothing inside it\n' "${before:-the old copy}"
+      printf 'can change that. Run this in your terminal, not here:\n\n  exec claude -c\n\n'
+      printf 'It replaces the process and keeps this conversation.\n'
+    else
+      printf 'plugin     %s, already the newest\n' "$after"
+    fi
     ;;
 
   setup)
