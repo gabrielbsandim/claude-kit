@@ -47,13 +47,14 @@ host. `github.com/owner/repo` is rejected, being neither. `setup` runs once per
 machine: it puts `kit` on your PATH, checks `git`, `jq` and `gh`, and offers to
 write a starting config for the current repo.
 
-## The four entry points
+## The five entry points
 
 | Command | For |
 | --- | --- |
 | `/claude-kit:task` | one task, description or issue number, to a draft pull request |
 | `/claude-kit:investigate` | a question about the system. Read-only, ends in an answer, never in a change |
 | `/claude-kit:ship` | work already committed on a branch, to a reviewable pull request |
+| `/claude-kit:backlog` | the open board: what is the same work, what is an orphan, what ships together |
 | `/claude-kit:note` | one durable fact into a markdown vault, with provenance |
 
 ## Configure a repo
@@ -87,6 +88,7 @@ Seven things are commands rather than instructions, because prose does not execu
 | --- | --- |
 | `kit worktree add/rm/gc` | the teardown nobody does. `gc` removes only what it can prove is finished and says why it kept the rest, and the funnel runs it at ship. While the teardown step was `rm`, which could not succeed once the pull request existed, it left 27 orphans and 35 GB behind. |
 | `kit version <declared>` | a session silently running an old copy of this plugin. It compares the version the skill declares, the version of the `kit` on PATH and the newest installed, and names which of the two fixes applies. |
+| `kit issues related/orphans/tree` | a second issue for work already on the board, and an issue with no parent. Ranking is rarity-weighted, so the file every issue names counts for almost nothing and the file two issues name decides. |
 | `kit gate <stage>` | paying twice for the same check. Receipts are keyed by the working tree's SHA, so the pre-push check skips what the implement gate just proved. `gateJobs` runs a stage's independent gates at once; `exclusive` keeps one alone. |
 | `kit review <level>` | one dispatch per reviewer and a blanket document load. One dispatch per slice instead, with the diff written to a file so no reviewer runs `git`. |
 | `kit screens` | guessing which URL renders a component the diff changed. It walks the import graph to the router entry point that reaches it. |
@@ -239,6 +241,7 @@ python3 tests/test-screen-routes.py    # 10 cases: route groups, dynamic segment
 python3 tests/test-gate-jobs.py        # 14 cases: that concurrency happens, and that exclusive means alone
 python3 tests/test-worktree-state.py   # 23 cases: what teardown will and will not delete
 python3 tests/test-kit-version.py      # 19 cases: the three copies of this plugin, and the skill literal
+python3 tests/test-issues.py           # 17 cases: what counts as the same work, and what a false no costs
 python3 tests/check-eval-schema.py     # eval frontmatter against the harness's allowed keys
 claude plugin validate . --strict      # manifests, skills, agents, commands
 ```
@@ -267,6 +270,7 @@ early is somebody's unpushed work.
 | gate concurrency | 14 cases in CI, and the 423.5s to 268.7s measurement above |
 | worktree teardown | 23 cases in CI. The first `gc --yes` after the verdict was fixed removed 24 of 27 worktrees and took that tree from 35 GB to 4.2 GB, measured with `du -shc` on both sides |
 | `kit version` | 19 cases in CI. Found by a real run: a task executed the 0.1.0 skill while 0.2.0 had been installed for five minutes |
+| `kit issues` and `/claude-kit:backlog` | 17 cases in CI, and the scorer was calibrated against a real 17-issue board: it reproduces the two orphans and refuses to call two issues the same work for sharing a document. The GitHub path is verified; other trackers exit non-zero rather than answer |
 | the browser lens | plumbing proven: server started, polled, navigated, resized, and the layout probe named the overflowing element and the below-fold button. **Never run against a real authenticated app**, so the auth path and the dispatch prompt are unproven |
 | Jira and Azure DevOps adapters | written from the API contract, **never run**, marked so in their own source |
 | `evals/` | schema validated offline, **never run**: `claude plugin eval` is early access and was not enabled on the account this was built from |

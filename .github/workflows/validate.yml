@@ -71,6 +71,9 @@ jobs:
       - name: Plugin version staleness
         run: python3 tests/test-kit-version.py
 
+      - name: Issue overlap scoring
+        run: python3 tests/test-issues.py
+
       - name: Eval suite schema
         run: |
           pip install --quiet pyyaml

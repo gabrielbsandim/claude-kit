@@ -8,6 +8,9 @@
 #   kit review <level>         the grouped review dispatch plan
 #   kit screens                routes the changed screens are reachable at
 #   kit board <status> --issue N
+#   kit issues related <text>  what is already on the board that overlaps this
+#   kit issues orphans         open issues that are neither an epic nor a child
+#   kit issues tree <n>        an epic and its children, with state
 #   kit doctor                 is this machine ready
 #   kit version [expected]     which copy is running, and whether it is the newest
 #   kit setup                  put `kit` on PATH
@@ -31,6 +34,7 @@ case "$cmd" in
   config)   exec "$KIT_BIN/funnel-config" "$@" ;;
   screens)  exec "$KIT_BIN/screen-routes" "$@" ;;
   gate)     exec "$KIT_BIN/gate" "$@" ;;
+  issues)   exec "$KIT_BIN/issues" "$@" ;;
   worktree) exec "$KIT_BIN/worktree" "$@" ;;
   board)    exec "$KIT_BIN/board-move" "$@" ;;
   review)

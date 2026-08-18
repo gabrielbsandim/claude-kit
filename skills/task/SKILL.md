@@ -34,10 +34,10 @@ slice.
 ## Before stage 1: is this skill the one that shipped
 
 ```
-kit version 0.3.1
+kit version 0.4.0
 ```
 
-`0.3.0` is the version this file shipped in, so the command is comparing the text
+The literal is the version this file shipped in, so the command is comparing the text
 you are reading against what is installed on the machine. A running session keeps
 the plugin copy it loaded at startup, and `claude plugin update` does not reach it.
 Measured on 2026-08-17: a funnel run executed the 0.1.0 skill while 0.2.0 had been
@@ -83,6 +83,25 @@ its output said so.
   their language; write artifacts in English. The tell that this drifted is a
   dispatch list reading "Re-review de testes da 582", which is a label three
   people later read in a repository whose every other line is English.
+- **A new issue is the last resort, and never an orphan.** A finding outside this
+  task's scope has four homes before a new issue: the deferred ledger, a comment on
+  an issue that already covers it, this task's own diff if it is smaller than
+  explaining why it was left out, or the epic as a new child. Before creating
+  anything, run it:
+
+  ```
+  kit issues related "<the title you were going to use>" --files a.ts,b.ts --parent <epic>
+  ```
+
+  It ranks the open board by shared source files, identifiers and words, and it
+  prints the parent's existing children. Two distinctive files in common means it is
+  the same work: comment there, or deliver both in one pull request. Then, if you do
+  create it, **link it to a parent** with `addSubIssue`, or write in the issue why it
+  stands alone. Measured on 2026-08-17 in the repository this was built against:
+  eleven security issues in two days, nine of them correctly linked, and the only
+  two orphans were the two created as findings mid-task. An orphan is what turns an
+  epic with children into a flat list that reads as growing forever, which is what
+  the backlog felt like while the count was in fact flat at 18 open.
 
 ### Effort level, declared by the spec in stage 1
 
@@ -485,7 +504,10 @@ sentence each.
 2. What changed, in one sentence naming the class of defect, not each instance.
 3. Gates: the count that ran, failed and was skipped by receipt, and the tree SHA.
 4. Review: findings by severity, how many rounds, where the rest is written down.
-5. What was left out, and the issue that owns it.
+5. What was left out, and the issue that owns it. If this run created issues, the
+   count and the parent each one hangs under: "opened 2, both under #571". A run
+   that closes one issue and opens three says so in those words, because an
+   unstated delta is how a backlog grows without anyone deciding to grow it.
 6. What needs the user, or "nothing" if the answer is nothing.
 
 A gate that stopped the funnel replaces line 1 and is named without varnish. A
