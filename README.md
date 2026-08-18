@@ -90,6 +90,7 @@ Ten things are commands rather than instructions, because prose does not execute
 | `kit version <declared>` | a session silently running an old copy of this plugin. It compares the version the skill declares, the version of the `kit` on PATH and the newest installed, and names which of the two fixes applies. |
 | `kit reload` | the three-step dance after a release. It updates, relinks, and prints the restart line instead of implying a session can reload itself. |
 | `kit issues related/orphans/tree` | a second issue for work already on the board, and an issue with no parent. Ranking is rarity-weighted, so the file every issue names counts for almost nothing and the file two issues name decides. |
+| `kit pr-body <file>` | a pull request body that competes with the diff instead of introducing it. It measures the prose you added, not the template, its tables or a fenced block, and refuses over 2000 characters or 600 in one section. The chat report had a budget and the body did not, so the overflow went there: one measured body ran to 11902 characters of prose in front of a 163-line source diff. |
 | `kit gate <stage>` | paying twice for the same check. Receipts are keyed by the working tree's SHA, so the pre-push check skips what the implement gate just proved. `gateJobs` runs a stage's independent gates at once; `exclusive` keeps one alone. |
 | `kit review <level>` | one dispatch per reviewer and a blanket document load. One dispatch per slice instead, with the diff written to a file so no reviewer runs `git`. |
 | `kit screens` | guessing which URL renders a component the diff changed. It walks the import graph to the router entry point that reaches it. |
@@ -307,6 +308,7 @@ early is somebody's unpushed work.
 | worktree teardown | 23 cases in CI. The first `gc --yes` after the verdict was fixed removed 24 of 27 worktrees and took that tree from 35 GB to 4.2 GB, measured with `du -shc` on both sides |
 | `kit version` | 19 cases in CI. Found by a real run: a task executed the 0.1.0 skill while 0.2.0 had been installed for five minutes |
 | `kit issues` and `/claude-kit:backlog` | 17 cases in CI, and the scorer was calibrated against a real 17-issue board: it reproduces the two orphans and refuses to call two issues the same work for sharing a document. The GitHub path is verified; other trackers exit non-zero rather than answer |
+| `kit pr-body` | 34 cases in CI, and 8 mutations to the guards each turn it red. Calibrated on three real bodies: 3123, 9999 and 11902 characters of prose against a 2000 budget |
 | the browser lens | plumbing proven: server started, polled, navigated, resized, and the layout probe named the overflowing element and the below-fold button. **Never run against a real authenticated app**, so the auth path and the dispatch prompt are unproven |
 | Jira and Azure DevOps adapters | written from the API contract, **never run**, marked so in their own source |
 | `evals/` | schema validated offline, **never run**: `claude plugin eval` is early access and was not enabled on the account this was built from |

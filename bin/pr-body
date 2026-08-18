@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""Measure the prose a pull request body adds, and refuse an essay.
+
+    kit pr-body <file> [--max N] [--section-max N] [--template PATH] [--quiet]
+
+The body is the only part of a task's output a human reads before deciding
+whether to review the diff. It had no budget until 0.6.0, and the chat report
+had one, so the overflow went here: measured on 2026-08-17, PR 590 carried
+13589 characters and 2203 words, about nine minutes of reading, on a change
+whose source diff was 163 lines. The same run wrote a 12146-character findings
+ledger into the session scratchpad, which is a temp directory no reviewer can
+open, so the body had absorbed it.
+
+Prose is what the author added, not the whole file. These do not count:
+
+  * anything inside a ``` fence, which is evidence rather than prose
+  * table rows, because a table is a short enumerable fact and allowed
+  * checkbox lines, which the template owns
+  * HTML comments and <details> tags
+  * any line that appears verbatim in the repo's pull request template
+
+Exits 3 over either budget, so a caller can gate on it. Exits 0 and prints one
+line when it fits.
+"""
+
+import argparse
+import os
+import re
+import sys
+
+DEFAULT_MAX = 2000
+DEFAULT_SECTION_MAX = 600
+TEMPLATE_PATHS = (
+    ".github/pull_request_template.md",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    "docs/pull_request_template.md",
+)
+
+FENCE = re.compile(r"^\s*(```|~~~)")
+TABLE_ROW = re.compile(r"^\s*\|")
+CHECKBOX = re.compile(r"^\s*[-*]\s*\[[ xX]\]")
+HTML_ONLY = re.compile(r"^\s*</?(details|summary|br|p|div)\b[^>]*>\s*$", re.I)
+COMMENT = re.compile(r"^\s*<!--.*-->\s*$")
+HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
+
+
+def find_template(explicit):
+    if explicit:
+        return explicit if os.path.exists(explicit) else None
+    for path in TEMPLATE_PATHS:
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _closed_fences(lines):
+    """Indices of fence openers that have a matching closer.
+
+    One pass ahead of the measurement, because whether an opener counts depends
+    on something later in the file.
+    """
+    closed = set()
+    open_at = None
+    mark = ""
+    for index, raw in enumerate(lines):
+        fence = FENCE.match(raw)
+        if not fence:
+            continue
+        if open_at is None:
+            open_at, mark = index, fence.group(1)
+        elif raw.strip().startswith(mark):
+            closed.add(open_at)
+            open_at, mark = None, ""
+    return closed
+
+
+def template_lines(path):
+    """The template's own lines, so filling it in does not count as writing it.
+
+    Compared stripped and non-empty: a heading the author kept is the template's
+    heading whatever the surrounding whitespace does, and counting an empty line
+    as a match would drop nothing anyway.
+    """
+    if not path:
+        return set()
+    with open(path, encoding="utf-8") as handle:
+        return {line.strip() for line in handle if line.strip()}
+
+
+def prose_lines(text, skip):
+    """Yield (section, line) for every line that counts as prose.
+
+    A fence that is never closed counts as prose from the opener on, rather than
+    swallowing the rest of the file. Swallowing would fail open in the wrong
+    direction: one stray ``` and every body measures as empty, so the budget
+    stops firing exactly when the body is malformed enough to need it.
+    """
+    section = "(before the first heading)"
+    lines = text.splitlines()
+    closed = _closed_fences(lines)
+
+    in_fence = False
+    fence_mark = ""
+    for index, raw in enumerate(lines):
+        fence = FENCE.match(raw)
+        if fence and (in_fence or index in closed):
+            if not in_fence:
+                in_fence, fence_mark = True, fence.group(1)
+            elif raw.strip().startswith(fence_mark):
+                in_fence = False
+            continue
+        if in_fence:
+            continue
+
+        head = HEADING.match(raw)
+        if head:
+            section = head.group(2).strip()
+            # The heading itself is the template's when the template has it, and
+            # a heading the author invented is still a label rather than prose.
+            continue
+
+        line = raw.strip()
+        if not line:
+            continue
+        if line in skip:
+            continue
+        if TABLE_ROW.match(line) or CHECKBOX.match(line):
+            continue
+        if HTML_ONLY.match(line) or COMMENT.match(line):
+            continue
+        yield section, line
+
+
+def measure(text, template):
+    skip = template_lines(template)
+    per_section = {}
+    order = []
+    for section, line in prose_lines(text, skip):
+        if section not in per_section:
+            per_section[section] = 0
+            order.append(section)
+        # Plus one for the newline the line carried, so the count is the length
+        # of the prose as it reads rather than of its words glued together.
+        per_section[section] += len(line) + 1
+    written = sum(per_section.values())
+    words = sum(
+        len(line.split()) for _, line in prose_lines(text, skip)
+    )
+    worst = max(order, key=lambda s: per_section[s]) if order else None
+    return {
+        "total": len(text),
+        "written": written,
+        "words": words,
+        "sections": [(s, per_section[s]) for s in order],
+        "worst": (worst, per_section[worst]) if worst else None,
+    }
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("file")
+    ap.add_argument("--max", type=int, default=int(os.environ.get("KIT_PR_BODY_MAX", DEFAULT_MAX)))
+    ap.add_argument(
+        "--section-max",
+        type=int,
+        default=int(os.environ.get("KIT_PR_BODY_SECTION_MAX", DEFAULT_SECTION_MAX)),
+    )
+    ap.add_argument("--template")
+    ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("-h", "--help", action="store_true")
+    args = ap.parse_args(argv)
+
+    if args.help:
+        print(__doc__)
+        return 0
+
+    try:
+        with open(args.file, encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError as err:
+        print(f"cannot read {args.file}: {err}", file=sys.stderr)
+        return 2
+
+    template = find_template(args.template)
+    m = measure(text, template)
+    over = []
+    if m["written"] > args.max:
+        over.append(
+            f"{m['written']} characters of prose, {m['words']} words, "
+            f"over the {args.max} budget by {m['written'] - args.max}"
+        )
+    if m["worst"] and m["worst"][1] > args.section_max:
+        over.append(
+            f'section "{m["worst"][0]}" is {m["worst"][1]} characters, '
+            f"over the {args.section_max} cap by {m['worst'][1] - args.section_max}"
+        )
+
+    if not over:
+        if not args.quiet:
+            where = template or "no template found"
+            print(
+                f"OK  {m['written']} characters of prose, {m['words']} words, "
+                f"{m['total']} in the file ({where})"
+            )
+        return 0
+
+    print("TOO LONG")
+    for line in over:
+        print(f"  {line}")
+    print("  by section, largest first:")
+    for section, size in sorted(m["sections"], key=lambda x: -x[1]):
+        mark = "  <-- over the cap" if size > args.section_max else ""
+        print(f"    {size:>6}  {section}{mark}")
+    print(
+        "  Cut, do not compress: the audit trail belongs in a pull request comment,\n"
+        "  which is one click from the diff and does not have to be read first."
+    )
+    return 3
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

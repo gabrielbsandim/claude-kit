@@ -57,14 +57,28 @@ never `--no-verify`, and the plugin's `protect-tests` hook refuses it anyway.
 Open it exactly as the repo's pipeline document says. That document, not this skill, owns
 the base branch, the draft state and the issue reference.
 
-Fill the repo's template honestly, which means three specific things:
+Fill the repo's template honestly, which means four specific things:
 
 1. **A check is ticked only if it ran.** An unticked box is information; a ticked box that
    did not run is a lie with a green mark next to it.
 2. **Answer the surfaces question in prose**, even when the answer is nothing. A sentence
    beats a box, because the box is what gets ticked without being read.
-3. **PLAUSIBLE findings go under points of attention.** A finding you could not prove is
-   not a blocker and not nothing.
+3. **PLAUSIBLE findings go under points of attention**, one line each. A finding you could
+   not prove is not a blocker and not nothing.
+4. **The body has a budget, and it is measured.** Write it to a file and run
+   `kit pr-body <file>` before `gh pr create`: at most **2000 characters of prose** and
+   **600 per section**, counting what you added rather than the template, its tables, its
+   checkboxes or a fenced block. Over budget it exits 3 and prints the sections by size.
+
+Cut, do not compress. The body is the only thing a human reads before deciding whether to
+review the diff, so length there is spent out of the reviewer's attention rather than out
+of nothing. Everything worth keeping has a nearer home: the reasoning behind a finding goes
+in a pull request comment, a product decision goes in the issue, and why a non-obvious line
+exists goes in the code beside it. Measured on 2026-08-17: one body ran to 11902 characters
+of prose across 9 sections, 7 of them over the cap, in front of a 163-line source diff.
+
+What the body owes the reader and nothing more: what changed and why, what to check, what is
+knowingly left out and who owns it, and a link to the comment holding the long form.
 
 ## Stage 4 · Board and teardown
 

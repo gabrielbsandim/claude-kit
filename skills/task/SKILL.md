@@ -34,7 +34,7 @@ slice.
 ## Before stage 1: is this skill the one that shipped
 
 ```
-kit version 0.5.1
+kit version 0.6.0
 ```
 
 The literal is the version this file shipped in, so the command is comparing the text
@@ -448,8 +448,17 @@ rounds:
   pull request.
 
 Then: **CONFIRMED** → back to stage 2 with the finding as the spec.
-**PLAUSIBLE** → a "points of attention" section in the pull request body, not a
-blocker.
+**PLAUSIBLE** → one line each in the "points of attention" section of the pull
+request body, capped like every other section, with the reasoning in the ledger
+comment. Not a blocker.
+
+**The ledger is posted as a comment on the pull request**, once the URL exists.
+It was a file in the session scratchpad until 0.6.0, which is a temp directory no
+reviewer can open, so a ledger written there was written to nobody and the body
+absorbed it instead: measured on 2026-08-17, the #588 run wrote a 12146-character
+ledger to the scratchpad and a 13589-character body, and the second was largely a
+retelling of the first. A comment is next to the diff, collapses on its own, and
+does not have to be read before deciding whether to review.
 
 The re-review after a fix round is **incremental**, which is what `--since`
 does: the lens receives the fix diff plus the list of findings it is verifying,
@@ -475,10 +484,31 @@ stop.
    not this skill, owns the base branch, the draft state and the issue
    reference. Fill the repo's template honestly: a check is ticked only if it
    ran, PLAUSIBLE findings under points of attention.
-4. `kit board in_review --issue <issue>`, after the pull request URL exists.
-5. Never `done`. The funnel does not merge, and the tracker's own automation
+
+   **The body has a budget, and it is checked, not estimated.** Write it to a
+   file and run `kit pr-body <file>` before `gh pr create`: at most **2000
+   characters of prose** and **600 per section**, counting what you added and not
+   the template, the tables, the checkboxes or the fenced blocks. Over budget it
+   exits 3 and prints the sections by size.
+
+   Cut, do not compress. The body is the only thing a human reads before deciding
+   whether to review the diff, and everything worth keeping already has a better
+   home: the reasoning behind each finding goes in the ledger comment, a decision
+   about the product goes in the issue, and why a non-obvious line exists goes in
+   the code next to it. Measured on 2026-08-17: PR 590 carried 11902 characters
+   of prose across 9 sections, 7 of them over the 600 cap, on a change whose
+   source diff was 163 lines. Nine minutes of reading to reach a 163-line diff is
+   a body that competes with the diff instead of introducing it.
+
+   What the body owes the reader, and nothing else: what changed and why, in the
+   repo template's own sections; what to check; what is knowingly left out and
+   who owns it; and the link to the ledger comment.
+
+4. `gh pr comment` the findings ledger, right after the URL exists.
+5. `kit board in_review --issue <issue>`, after the pull request URL exists.
+6. Never `done`. The funnel does not merge, and the tracker's own automation
    owns that column.
-6. `kit worktree gc --yes`, not `rm`. The pull request is open at exactly this
+7. `kit worktree gc --yes`, not `rm`. The pull request is open at exactly this
    head and everything is pushed, which is the definition of finished, and `gc`
    collects what earlier tasks left in the same pass. It keeps anything it cannot
    prove finished, including a worktree sitting on the base tip with nothing of its
@@ -490,9 +520,11 @@ stop.
 ## Stage 6 · Report
 
 **Six items, hard cap, and at most 600 characters of prose in total.** Anything
-that does not fit one of the six does not go in the final message; it goes in the
-pull request body or the findings ledger, which is where a reader who wants it
-will look.
+that does not fit one of the six does not go in the final message. It goes in the
+findings ledger comment, which is where a reader who wants it will look, and
+**not** in the pull request body: the body has its own budget in stage 5, and
+naming it as the overflow here is what pushed PR 590 to 11902 characters of prose
+while this report stayed under 600.
 
 The budget is in characters because "one line each" does not survive contact with
 a paragraph. Measured on 2026-08-17: a report that read as six items was 1655
