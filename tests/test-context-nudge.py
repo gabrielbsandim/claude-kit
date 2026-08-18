@@ -188,6 +188,23 @@ try:
     check("9b and surfaces under KIT_NUDGE_DEBUG", rc != 0, f"rc={rc} out={out!r}")
     shutil.rmtree(os.path.join(cfg, "plugins"), ignore_errors=True)
 
+    # 9c. The banner goes to /dev/tty and never to stdout, because stdout is the
+    #     protocol channel: one stray line there and the harness cannot parse the
+    #     JSON. The first version only reached the model, so the person who can
+    #     actually run /compact never saw it.
+    src_hook = open(HOOK, encoding="utf-8").read()
+    check("9c the banner writes to the terminal", '"/dev/tty"' in src_hook,
+          "no second channel, so only the model is told")
+    check("9c and a missing terminal is tolerated", "except OSError" in src_hook,
+          "a headless run would fail the prompt")
+    transcript(cfg, "-p", "banner11", [usage(read=700_000)])
+    out, rc = fire(cfg, "banner11")
+    payload = json.loads(out)
+    check("9c stdout stays pure JSON", set(payload) == {"hookSpecificOutput"},
+          f"extra keys or text on stdout: {out!r}")
+    check("9c stdout carries no banner text", "\u00b7" not in out,
+          f"the banner leaked into the protocol channel: {out!r}")
+
     # 10. It never blocks. `decision` and `block` are the fields that would stop a
     #     prompt, and this hook must not learn them.
     check("10 the hook cannot block a prompt",

@@ -47,7 +47,28 @@ ADVICE = {
 }
 
 
-def quiet(msg=None):
+def to_terminal(line):
+    """Put the line where the person who can act will see it.
+
+    `additionalContext` reaches the model and nothing else, so the first version of
+    this hook reminded the assistant and left the user out. Only the user can run
+    /compact, so a nudge that stops at the model still depends on somebody choosing
+    to relay it, which is the remembering this hook exists to remove.
+
+    /dev/tty rather than stdout: stdout is the hook's protocol channel and anything
+    printed there that is not the JSON is a parse error. Silent when there is no
+    terminal, which is every non-interactive run.
+    """
+    try:
+        with open("/dev/tty", "w") as tty:
+            tty.write(line + "\n")
+    except OSError:
+        pass
+
+
+def quiet(msg=None, banner=None):
+    if banner:
+        to_terminal(banner)
     if msg:
         print(json.dumps({"hookSpecificOutput": {
             "hookEventName": "UserPromptSubmit", "additionalContext": msg}}))
@@ -136,13 +157,17 @@ def main():
     if verdict == said:
         quiet()
 
-    quiet(
+    quiet(banner=(
+        f"kit context: {verdict} \u00b7 {data.get('free_pct')}% of the window free \u00b7 "
+        f"a prefix rewrite now would cost about US$ {data.get('one_rewrite_now')} \u00b7 "
+        f"{'compact at the end of this unit of work' if verdict == 'AT THE NEXT BOUNDARY' else 'run /compact'}"
+    ), msg=(
         f"kit context: {verdict}. {data.get('free_pct')}% of the window is free "
         f"({data.get('used'):,} tokens in context), and one prefix rewrite at this size "
         f"would cost about US$ {data.get('one_rewrite_now')}. {ADVICE[verdict]} "
         f"Tell the user in one clause; do not run /compact yourself, you cannot. "
         f"And whatever the number says, compacting before a long pause is the one that pays most."
-    )
+    ))
 
 
 if __name__ == "__main__":
