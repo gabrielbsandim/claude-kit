@@ -80,6 +80,9 @@ jobs:
       - name: Pull request body budget
         run: python3 tests/test-pr-body.py
 
+      - name: Fan-out routing and the short lane
+        run: python3 tests/test-fan-out-routing.py
+
       - name: Eval suite schema
         run: |
           pip install --quiet pyyaml

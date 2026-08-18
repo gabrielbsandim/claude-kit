@@ -308,6 +308,7 @@ early is somebody's unpushed work.
 | worktree teardown | 23 cases in CI. The first `gc --yes` after the verdict was fixed removed 24 of 27 worktrees and took that tree from 35 GB to 4.2 GB, measured with `du -shc` on both sides |
 | `kit version` | 19 cases in CI. Found by a real run: a task executed the 0.1.0 skill while 0.2.0 had been installed for five minutes |
 | `kit issues` and `/claude-kit:backlog` | 17 cases in CI, and the scorer was calibrated against a real 17-issue board: it reproduces the two orphans and refuses to call two issues the same work for sharing a document. The GitHub path is verified; other trackers exit non-zero rather than answer |
+| the two lanes | 45 cases in CI, and 19 mutations to the rules each turn it red. Two of them survived the first version of the suite: a verdict removed from the agent's return shape, and the short lane silently dropping the board move |
 | `kit pr-body` | 34 cases in CI, and 8 mutations to the guards each turn it red. Calibrated on three real bodies: 3123, 9999 and 11902 characters of prose against a 2000 budget |
 | the browser lens | plumbing proven: server started, polled, navigated, resized, and the layout probe named the overflowing element and the below-fold button. **Never run against a real authenticated app**, so the auth path and the dispatch prompt are unproven |
 | Jira and Azure DevOps adapters | written from the API contract, **never run**, marked so in their own source |

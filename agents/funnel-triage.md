@@ -34,7 +34,7 @@ dispatch costs 18k tokens and returns three lines.
 ## Return exactly this shape
 
 ```
-VERDICT: PROCEED | NEEDS_DECISION | BLOCKED | ALREADY_DONE
+VERDICT: PROCEED | SHORT_FUNNEL | NEEDS_DECISION | BLOCKED | ALREADY_DONE
 WHY: one or two sentences, naming the evidence
 KIND: feature | bug | refactor | chore
 WHERE: the files and modules this lives in
@@ -57,6 +57,14 @@ it into code or documentation. An unmarked claim is a defect in your output.
 ## Verdicts
 
 - `PROCEED` only when the scope is closed and every criterion is checkable.
+- `SHORT_FUNNEL` when the task is real but no lens would have anything to read:
+  no contract, behaviour, data, money, permission, tenancy or published prose
+  moves. The orchestrator already made this call at stage 0 and is required to err
+  toward the long lane, so returning this is normal and not a complaint. Name which
+  of the seven you checked, and **still return the spec**: the short lane is the
+  same funnel without the subagents, so it needs the same contract to implement
+  against and the same acceptance criteria to gate on. Never return this because
+  the diff looks small. One line in an auth guard moves permission.
 - `NEEDS_DECISION` when two defensible designs exist and picking one is not
   yours to pick. Name both, with the tradeoff in one line each.
 - `BLOCKED` when something outside this repository has to move first.

@@ -34,7 +34,7 @@ slice.
 ## Before stage 1: is this skill the one that shipped
 
 ```
-kit version 0.6.0
+kit version 0.7.0
 ```
 
 The literal is the version this file shipped in, so the command is comparing the text
@@ -125,6 +125,67 @@ pass**, not permission to iterate, because a round is the expensive unit.
 - `git status` clean, including your own edits.
 - No worktree yet. Triage and spec change no file, and the environment is paid
   for only after the spec gate says the task is real.
+- **Which lane.** Answered here, before the triage dispatch, because triage is
+  already the floor: measured on the 2026-08-17 run of one issue, the triage agent
+  alone cost 9.4 minutes and about US$ 2.46 of the run's US$ 33, so a "this was
+  too small" answer coming out of triage pays the floor before saying the floor
+  was not worth paying.
+
+### The two lanes, and what they share
+
+Both lanes are funnels. The short one is the long one with the subagents removed,
+not the long one with the discipline removed, and everything that has a `kit`
+command behind it happens in both:
+
+| Step | Long | Short |
+| --- | --- | --- |
+| Stage 0 pre-flight | yes | yes |
+| Board to in progress | yes | yes |
+| Branch and worktree from the config | yes | yes |
+| Triage and spec dispatch | yes | no, you write the spec inline |
+| Implementer, test writer, review lenses | yes | no |
+| `kit gate` for the stage | yes | yes |
+| Commit under the repo's convention | yes | yes |
+| `kit gate ship`, push, draft pull request | yes | yes |
+| Body under the `kit pr-body` budget | yes | yes |
+| `kit board in_review`, `kit worktree gc --yes` | yes | yes |
+
+So the short lane still moves the card, still runs lint, types and tests, still
+opens a reviewable pull request and still tears the worktree down. What it does
+not buy is four to seven clean-context agents reading a diff that has nothing for
+them to read. An issue already on the board is used and moved; the short lane
+never creates one, because a typo that opens an issue is the backlog growth the
+funnel-wide rule above exists to stop.
+
+### The short lane is for a change with no reviewable surface
+
+**Not a line count.** One line in an auth guard is the most dangerous change in
+the repository and thirty lines of copy are nothing, so size is the wrong axis.
+The question is whether the lenses would have anything to read. Take the short
+lane only when **none** of these moves:
+
+| Surface | Examples of it moving |
+| --- | --- |
+| Contract | a signature, a route, a schema, a response shape, an exported type |
+| Behaviour | a new branch, a new state, an order of operations, a cap or a retry |
+| Data | a migration, a write path, a query's scope, a cache key |
+| Money, permission, tenancy | anything a customer is charged, refused or shown |
+| Published prose | a help entry, a policy, the assistant corpus, a public document |
+
+What is left when none of them moves: a copy string, a config value, a comment, a
+dependency bump with no API change, a rename inside one file, a typo.
+
+**Announce and proceed, without waiting.** Say in one line that this is the short
+lane and which of the five surfaces you checked, then run it. The user chose
+announce-and-proceed on 2026-08-18, so a confirmation round here is not free
+caution, it is the cost that decision rejected. Naming the criterion in the
+announcement is what makes it arguable: the user can stop you before anything is
+written.
+
+**Uncertainty goes up, never down.** If the surface table is arguable at all, take
+the long lane. Escalating late costs the minutes already spent; taking the short
+lane wrongly ships a defect with a green report attached, which is the failure
+this whole skill exists to prevent. The reversal is cheap in one direction only.
 
 ## The five agents this skill dispatches
 
@@ -164,7 +225,8 @@ material, each paying the repo's mandatory doc load; the gate below reads the
 
 The dispatch returns:
 
-1. **verdict**: `PROCEED`, `NEEDS_DECISION`, `BLOCKED` or `ALREADY_DONE`
+1. **verdict**: `PROCEED`, `SHORT_FUNNEL`, `NEEDS_DECISION`, `BLOCKED` or
+   `ALREADY_DONE`
 2. **kind**: feature / bug / refactor / chore, and where it lives
 3. **binding documents**: which of the repo's docs this change is subject to
 4. **effort level**, with the reason
@@ -172,9 +234,16 @@ The dispatch returns:
    criteria × expected evidence, test plan
 6. **invariants**, per the table below
 
-**GATE**: only `PROCEED` advances. `NEEDS_DECISION` or `BLOCKED` → stop and
-present the diagnosis, AskUserQuestion when the alternatives are objective.
-`ALREADY_DONE` → stop and show the evidence.
+**GATE**: only `PROCEED` advances into the subagent stages. `NEEDS_DECISION` or
+`BLOCKED` → stop and present the diagnosis, AskUserQuestion when the alternatives
+are objective. `ALREADY_DONE` → stop and show the evidence.
+
+`SHORT_FUNNEL` → the stage 0 lane call was one level too high, which is the side it
+is required to err on. Say so in one line with the surfaces triage named, then run
+the short lane on the spec it returned: implement it yourself, `kit gate` for the
+stage, commit, and go to **stage 5**. Stages 2, 3 and 4 do not run; every step in
+the two-lane table does. Do not re-dispatch triage to get a different answer, which
+is US$ 2.46 spent to disagree with the first one.
 
 `PROCEED` with no issue yet → open one the way the pipeline document says, and
 continue with its number. The funnel needs it: branch, worktree, pull request
