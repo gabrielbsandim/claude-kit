@@ -34,7 +34,7 @@ slice.
 ## Before stage 1: is this skill the one that shipped
 
 ```
-kit version 0.7.1
+kit version 0.8.0
 ```
 
 The literal is the version this file shipped in, so the command is comparing the text
@@ -104,6 +104,31 @@ is the case that actually bites here, and it is the one you can fix without stop
   two orphans were the two created as findings mid-task. An orphan is what turns an
   epic with children into a flat list that reads as growing forever, which is what
   the backlog felt like while the count was in fact flat at 18 open.
+
+- **Compact at a boundary, never at a percentage, and always before a pause.**
+  Compacting is cheap and a prefix rewrite is not, and the rewrite is not something
+  you choose. Measured across 16 sessions, 2026-08-11 to 2026-08-18, at
+  API-equivalent rates: US$ 2442 spent, **US$ 393 of it, 16%, on requests that read
+  almost nothing from cache and wrote a whole prefix back**, at US$ 2.62 each
+  against US$ 0.20 for a normal request. So the value of compacting is not the
+  cheaper reads afterwards, it is that the rewrite which happens anyway is smaller.
+
+  ```
+  kit context
+  ```
+
+  It reads this session through `CLAUDE_CODE_SESSION_ID` and prints one of four
+  verdicts: **HOLD** above 60% of the window free, **AT THE NEXT BOUNDARY** from 60
+  to 35, **NOW** from 35 to 15 even mid-task, and **LATE** below 15, where the
+  automatic compaction picks the cut point instead of you.
+
+  The end of a unit of work is the trigger; the percentage is only how urgent the
+  next boundary is. Compacting mid-task trades a dollar for file re-reads that cost
+  more and come back worse. One case ignores the percentage: **before a long pause.**
+  In the session measured on Bedrock, 116 of 152 prefix rewrites followed a gap of 5
+  to 60 minutes, at a median of 301,026 tokens and US$ 1.89 each, because that route
+  was not getting the one-hour cache TTL. A pause with a large prefix is the only
+  place one request costs five dollars.
 
 ### Effort level, declared by the spec in stage 1
 
@@ -612,6 +637,11 @@ sentence each.
    that closes one issue and opens three says so in those words, because an
    unstated delta is how a backlog grows without anyone deciding to grow it.
 6. What needs the user, or "nothing" if the answer is nothing.
+
+Then `kit context`. A shipped task is the boundary the rule above is about: the
+detail being dropped is the detail this task no longer needs, and the next task
+starts against a prefix that is cheap to rewrite. Say the verdict in the report's
+item 6 when it is anything but HOLD.
 
 A gate that stopped the funnel replaces line 1 and is named without varnish. A
 number with no command behind it is not a number: leave it out. Never declare

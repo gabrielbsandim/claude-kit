@@ -103,5 +103,12 @@ At most 600 characters of prose, roughly 95 words: what shipped, the gate result
 what was skipped by receipt, the pull request link, and what was left out. Never declare
 done without the numbers, and name a gate that stopped you as such.
 
+Then `kit context`, because a ship is a boundary. It prints HOLD, AT THE NEXT BOUNDARY,
+NOW or LATE off how full the window is, and anything but HOLD belongs in the report as
+one clause. Measured across 16 sessions: 16% of the spend went to requests that reread
+nothing from cache and wrote a whole prefix back, at US$ 2.62 each against US$ 0.20 for
+a normal one, so a boundary passed without compacting is the cheapest saving there is
+to skip. And whatever it says, compact before a long pause.
+
 Characters, not lines, because a paragraph counts as one line in the source and four in the
 terminal. 100 characters is about one rendered line.

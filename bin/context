@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""How full this session's context is, and whether to compact yet.
+
+    kit context [--window N] [--project DIR] [--session ID] [--json]
+
+Compacting is cheap and rewriting a large prefix is expensive, and the second one
+is not a choice you make. Measured across 16 sessions from 2026-08-11 to
+2026-08-18, at API-equivalent rates: US$ 2442 total, of which **US$ 393, 16%, went
+to requests that read almost nothing from cache and wrote a whole prefix back**.
+1.4% of requests carried 15% of the cost in the worst session, at US$ 2.62 each
+against US$ 0.20 for a normal one. The largest single prefix rewrite was 863,397
+tokens in one request.
+
+So the point of compacting is not the cheaper reads afterwards. It is that the
+rewrite which will happen anyway is smaller when it does.
+
+**The trigger is the end of a unit of work, not a percentage.** Compacting
+mid-task trades a dollar for file re-reads that cost more and come back worse.
+The percentage only says how urgent the next boundary is, which is what this
+command prints.
+
+One case ignores the percentage entirely: **compact before a long pause.** In the
+session measured on Bedrock, 116 of 152 prefix rewrites followed a gap of 5 to 60
+minutes and 26 followed more than an hour, at a median of 301,026 tokens and
+US$ 1.89 each. That session was not getting the one-hour cache TTL, so every
+coffee break rewrote everything. A pause with a large prefix is the only place a
+single request costs five dollars.
+
+Finds its own session through `CLAUDE_CODE_SESSION_ID`, which the harness exports
+into every command it runs, so the answer is about the session asking rather than
+about whichever transcript was written to last. Without that variable it falls back
+to the newest transcript for the current directory's project and says so, because a
+number attributed to the wrong session is worse than no number.
+"""
+
+import argparse
+import glob
+import json
+import os
+import sys
+
+# Opus and Sonnet 5 are 1M; Haiku 4.5 is 200k. Passed in rather than detected,
+# because the id in a transcript is the model of one request and a session can
+# change model mid-run.
+DEFAULT_WINDOW = 1_000_000
+
+# The bands. Percentages of the window still free, largest first.
+BANDS = (
+    (60, "HOLD", "no routine compaction; compact only if you are stopping"),
+    (35, "AT THE NEXT BOUNDARY", "compact when the current unit of work ends, do not let it slide"),
+    (15, "NOW", "compact even mid-task: a prefix rewrite here costs several dollars"),
+    (0, "LATE", "the automatic one fires around here and picks the cut point for you"),
+)
+
+RATES = {"in": 5.0, "out": 25.0, "cw": 6.25, "cr": 0.50}
+
+
+def cost(u):
+    return (
+        u.get("input_tokens", 0) * RATES["in"]
+        + u.get("output_tokens", 0) * RATES["out"]
+        + u.get("cache_creation_input_tokens", 0) * RATES["cw"]
+        + u.get("cache_read_input_tokens", 0) * RATES["cr"]
+    ) / 1e6
+
+
+def slug_for(path):
+    """The directory name Claude Code derives from a working directory."""
+    return "-" + path.strip("/").replace("/", "-")
+
+
+def find_session(cfg, session):
+    """A named session, looked for under every project rather than one.
+
+    Not scoped to the current directory's project: a session started elsewhere is
+    exactly the one somebody names by hand, and scoping it there answered "no
+    transcript" for a file that existed.
+    """
+    hits = sorted(glob.glob(os.path.join(cfg, "projects", "*", session + "*.jsonl")))
+    return hits[0] if hits else None
+
+
+def newest_transcript(project_dir):
+    hits = glob.glob(os.path.join(project_dir, "*.jsonl"))
+    return max(hits, key=os.path.getmtime) if hits else None
+
+
+def read_usage(path):
+    """Every request's usage, in order, deduplicated by request and message id."""
+    out = []
+    seen = set()
+    with open(path, errors="ignore") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            message = row.get("message") or {}
+            usage = message.get("usage")
+            if not usage:
+                continue
+            key = (row.get("requestId"), message.get("id"))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(usage)
+    return out
+
+
+def is_rewrite(u):
+    """Read almost nothing, wrote a whole prefix back.
+
+    Both halves matter. A large `cache_creation` alone is ordinary growth as the
+    conversation extends; it is the collapsed `cache_read` beside it that says the
+    prefix missed rather than grew.
+    """
+    return (
+        u.get("cache_read_input_tokens", 0) < 50_000
+        and u.get("cache_creation_input_tokens", 0) > 100_000
+    )
+
+
+def band(free_pct):
+    for floor, verdict, advice in BANDS:
+        if free_pct > floor:
+            return verdict, advice
+    return BANDS[-1][1], BANDS[-1][2]
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--window", type=int, default=int(os.environ.get("KIT_CONTEXT_WINDOW", DEFAULT_WINDOW)))
+    ap.add_argument("--project")
+    ap.add_argument("--session")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("-h", "--help", action="store_true")
+    args = ap.parse_args(argv)
+
+    if args.help:
+        print(__doc__)
+        return 0
+
+    cfg = os.environ.get("CLAUDE_CONFIG_DIR", os.path.expanduser("~/.claude"))
+    wanted = args.session or os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+    guessed = False
+
+    path = find_session(cfg, wanted) if wanted else None
+    if not path:
+        guessed = bool(wanted)
+        project = args.project or os.path.join(cfg, "projects", slug_for(os.getcwd()))
+        if not os.path.isdir(project):
+            print(f"no transcripts for this directory under {project}", file=sys.stderr)
+            return 2
+        path = newest_transcript(project)
+        if not path:
+            print(f"no transcript in {project}", file=sys.stderr)
+            return 2
+
+    reqs = read_usage(path)
+    if not reqs:
+        print(f"no requests recorded in {os.path.basename(path)}", file=sys.stderr)
+        return 2
+
+    last = reqs[-1]
+    # What the next request will have to read: everything cached plus what this
+    # one just added. This is the number the prefix rewrite would be charged on.
+    used = last.get("cache_read_input_tokens", 0) + last.get("cache_creation_input_tokens", 0)
+    free_pct = max(0, round((args.window - used) * 100 / args.window))
+    verdict, advice = band(free_pct)
+
+    rewrites = [u for u in reqs if is_rewrite(u)]
+    spent = sum(cost(u) for u in reqs)
+    burned = sum(cost(u) for u in rewrites)
+    # What one rewrite would cost at the current size, which is the number that
+    # makes the verdict an argument rather than a preference.
+    at_risk = used * RATES["cw"] / 1e6
+
+    if args.json:
+        print(json.dumps({
+            "session": os.path.splitext(os.path.basename(path))[0][:8], "window": args.window,
+            "used": used, "free_pct": free_pct, "verdict": verdict,
+            "requests": len(reqs), "rewrites": len(rewrites),
+            "spent": round(spent, 2), "burned_on_rewrites": round(burned, 2),
+            "one_rewrite_now": round(at_risk, 2),
+        }))
+        return 0
+
+    # The id, without the extension: a short filename truncated to eight characters
+    # printed "edge2.js" as if it were a session id.
+    who = os.path.splitext(os.path.basename(path))[0][:8]
+    tag = f"session {who}" + ("  (guessed: the named session has no transcript yet)" if guessed else "")
+    print(f"{verdict}  {free_pct}% of the window free, {used:,} of {args.window:,} in context")
+    print(f"  {tag}")
+    print(f"  {advice}")
+    print(f"  a prefix rewrite at this size would cost about US$ {at_risk:.2f} in one request")
+    share = f", {burned / spent * 100:.0f}% of it" if spent else ""
+    print(f"  this session: {len(reqs)} requests, {len(rewrites)} rewrites, "
+          f"US$ {spent:.2f} at API rates and US$ {burned:.2f} on rewrites{share}")
+    print("  and whatever the percentage says, compact before a long pause")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

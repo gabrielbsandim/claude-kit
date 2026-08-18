@@ -86,6 +86,9 @@ jobs:
       - name: kit reload relinks and says only true things
         run: python3 tests/test-kit-reload.py
 
+      - name: Context bands and the compaction rule
+        run: python3 tests/test-context.py
+
       - name: Eval suite schema
         run: |
           pip install --quiet pyyaml

@@ -12,6 +12,7 @@
 #   kit issues orphans         open issues that are neither an epic nor a child
 #   kit issues tree <n>        an epic and its children, with state
 #   kit pr-body <file>         how much prose the pull request body adds
+#   kit context                how full the context is, and whether to compact
 #   kit doctor                 is this machine ready
 #   kit version [expected]     which copy is running, and whether it is the newest
 #   kit reload                 update the plugin, relink `kit`, print the restart line
@@ -44,6 +45,7 @@ case "$cmd" in
   gate)     exec "$KIT_BIN/gate" "$@" ;;
   issues)   exec "$KIT_BIN/issues" "$@" ;;
   pr-body)  exec "$KIT_BIN/pr-body" "$@" ;;
+  context)  exec "$KIT_BIN/context" "$@" ;;
   worktree) exec "$KIT_BIN/worktree" "$@" ;;
   board)    exec "$KIT_BIN/board-move" "$@" ;;
   review)
