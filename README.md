@@ -193,11 +193,19 @@ software without being asked:
   on every failure path including offline. Registering it makes `main` your release
   channel, which is only sane because the three `validate` jobs gate `main`.
 
+Register the **shim**, never the Python file. The Python half lives under a directory
+named after the version, so registering it directly would pin the hook to one release
+and make the hook itself the next thing that goes silently stale.
+
+```sh
+cp hooks/plugin-freshness.sh ~/.claude/hooks/
+```
+
 ```jsonc
 "SessionStart": [
   { "matcher": "startup|resume", "hooks": [
       { "type": "command", "timeout": 90,
-        "command": "python3 ~/.claude/plugins/cache/claude-kit/claude-kit/<version>/hooks/plugin-freshness.py" } ] }
+        "command": "sh ~/.claude/hooks/plugin-freshness.sh" } ] }
 ]
 ```
 
