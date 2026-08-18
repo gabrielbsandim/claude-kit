@@ -43,11 +43,29 @@ jobs:
           done
           for f in hooks/*.py tests/*.py; do python3 -m py_compile "$f"; done
 
+      # The runner image ships shellcheck, so the apt install that used to open this
+      # step is only a fallback and is bounded. Measured 2026-08-18: this step took 7
+      # seconds on the previous green run and then hung past four minutes on the next
+      # one, with identical inputs, because apt was the only thing here that touches
+      # the network. A check that can block forever is a check that stops being run.
+      #
+      # Directories are skipped: the step before this one compiles bin/*.py and leaves
+      # bin/__pycache__ behind, which `head -1` cannot read, so it reached shellcheck
+      # as a path that is not a script.
       - name: shellcheck
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y shellcheck
+          if ! command -v shellcheck > /dev/null; then
+            timeout 300 sudo apt-get update -qq
+            timeout 300 sudo apt-get install -y shellcheck
+          fi
+          shellcheck --version
           for f in bin/*; do
+            [ -f "$f" ] || continue
             case "$(head -1 "$f")" in *python*) ;; *) shellcheck -S warning "$f" || true ;; esac
+          done
+          for f in hooks/*.sh; do
+            [ -f "$f" ] || continue
+            shellcheck -S warning "$f" || true
           done
 
       - name: Hook behaviour
