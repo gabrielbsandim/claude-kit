@@ -89,6 +89,9 @@ jobs:
       - name: Context bands and the compaction rule
         run: python3 tests/test-context.py
 
+      - name: The context nudge speaks once per band
+        run: python3 tests/test-context-nudge.py
+
       - name: Eval suite schema
         run: |
           pip install --quiet pyyaml

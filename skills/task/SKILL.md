@@ -34,7 +34,7 @@ slice.
 ## Before stage 1: is this skill the one that shipped
 
 ```
-kit version 0.8.0
+kit version 0.9.0
 ```
 
 The literal is the version this file shipped in, so the command is comparing the text
