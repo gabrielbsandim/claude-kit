@@ -34,21 +34,23 @@ slice.
 ## Before stage 1: is this skill the one that shipped
 
 ```
-kit version 0.7.0
+kit version 0.7.1
 ```
 
 The literal is the version this file shipped in, so the command is comparing the text
-you are reading against what is installed on the machine. A running session keeps
-the plugin copy it loaded at startup, and `claude plugin update` does not reach it.
-Measured on 2026-08-17: a funnel run executed the 0.1.0 skill while 0.2.0 had been
-installed for five minutes, so that task ran without a browser lens, without the
-report cap, and without two other rules that had already shipped, and nothing in
-its output said so.
+you are reading against what is installed on the machine. Measured on 2026-08-17: a
+funnel run executed the 0.1.0 skill while a newer one existed upstream, so that task
+ran without a browser lens, without the report cap, and without two other rules that
+had already shipped, and nothing in its output said so.
 
-- **STALE SKILL**: tell the user, in one line, that the session is running the old
-  copy and has to be restarted, and stop. You cannot fix this from inside the
-  session, and running anyway spends an hour producing work against rules that were
-  replaced.
+The cause was the **installed** copy being old, not the session holding an old one.
+A skill body is re-read at each invocation: the same unrestarted session loaded this
+file from 0.1.0 at 14:11, from 0.1.1 at 19:03 and from 0.3.1 at 23:16. So a STALE KIT
+is the case that actually bites here, and it is the one you can fix without stopping.
+
+- **STALE SKILL**: the caller declares a version newer than anything installed, which
+  means this file came from somewhere the machine does not have. Tell the user in one
+  line and stop; running anyway spends an hour against rules whose code is absent.
 - **STALE KIT**: you can fix this. Run the `kit setup` line it prints, then carry on.
 - **`unknown subcommand: version`**: the `kit` on PATH is older than 0.3.0, which is
   the STALE KIT case with no way to say so. `kit setup` from the newest installed

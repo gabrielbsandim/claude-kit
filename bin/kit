@@ -31,6 +31,12 @@ KIT_ROOT="$(dirname "$KIT_BIN")"
 
 usage() { awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$KIT_BIN/kit"; }
 
+# Defined here, not only in the five sibling scripts. `reload` called `die` from
+# this file since 0.5.1 and it was never defined here, so the one error it can
+# raise, no installed copy to relink, exited 2 with no message at all. Found by
+# the test that did not exist either.
+die() { printf '%s\n' "$*" >&2; exit 1; }
+
 cmd="${1:-}"; shift || true
 case "$cmd" in
   config)   exec "$KIT_BIN/funnel-config" "$@" ;;
@@ -113,24 +119,37 @@ case "$cmd" in
     cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
     target="${1:-$HOME/.local/bin}"
 
-    before="$(ls -d "$cfg"/plugins/cache/*/"$name"/*/ 2>/dev/null | sed 's|/$||;s|.*/||' | sort -V | tail -1)"
+    before="$(ls -d "$cfg"/plugins/cache/*/"$name"/*/ 2>/dev/null | sed 's|/$||;s|.*/||' | sort -V | tail -1 || true)"
     if command -v claude >/dev/null; then
       claude plugin update "$id" -y 2>&1 | tail -2
     else
       printf 'claude is not on PATH, so the update half cannot run here\n' >&2
     fi
-    after="$(ls -d "$cfg"/plugins/cache/*/"$name"/*/ 2>/dev/null | sed 's|/$||;s|.*/||' | sort -V | tail -1)"
+    after="$(ls -d "$cfg"/plugins/cache/*/"$name"/*/ 2>/dev/null | sed 's|/$||;s|.*/||' | sort -V | tail -1 || true)"
     [ -n "$after" ] || die "no installed copy of $name under $cfg/plugins"
 
-    root="$(ls -d "$cfg"/plugins/cache/*/"$name"/"$after"/ 2>/dev/null | head -1)"
+    root="$(ls -d "$cfg"/plugins/cache/*/"$name"/"$after"/ 2>/dev/null | head -1 || true)"
     "$root/bin/kit" setup "$target" >/dev/null
     printf '\nkit        %s  (relinked, live now)\n' "$after"
 
     if [ "$before" != "$after" ]; then
       printf 'plugin     %s -> %s on disk\n' "${before:-none}" "$after"
-      printf '\nThe skills and agents in THIS session are still %s, and nothing inside it\n' "${before:-the old copy}"
-      printf 'can change that. Run this in your terminal, not here:\n\n  exec claude -c\n\n'
-      printf 'It replaces the process and keeps this conversation.\n'
+      # This block said "the skills and agents in THIS session are still <old>", and
+      # the skills half was wrong. Measured on 2026-08-17 in one session that never
+      # restarted: /claude-kit:task loaded its SKILL.md from 0.1.0 at 14:11, from
+      # 0.1.1 at 19:03 and from 0.3.1 at 23:16. The body of a skill is re-read at
+      # each invocation. Telling somebody to restart for a reason that is not real
+      # is how the real reasons stop being believed.
+      printf '\nLive already, no restart:\n'
+      printf '  bin/, including kit itself, resolved on PATH when it runs\n'
+      printf '  a skill body, re-read from the newest copy at each invocation\n'
+      printf '\nWaiting on a restart:\n'
+      printf '  the output style, read into the system prompt once at boot\n'
+      printf '  hooks, registered from settings.json at session start\n'
+      printf '  the skill and agent listing, and agent definitions (INFERRED)\n'
+      printf '\n  exec claude -c\n\n'
+      printf 'In your terminal, not inside the session: it replaces the process and\n'
+      printf 'keeps this conversation.\n'
     else
       printf 'plugin     %s, already the newest\n' "$after"
     fi
