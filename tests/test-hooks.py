@@ -131,6 +131,41 @@ for name, payload, env, want in [
 ]:
     check(f"no-em-dash: {name}", run("no-em-dash.py", payload, env), want)
 
+# --------------------------------------------------------------- pr-body-gate
+# Paired hard: this hook stands between the funnel and its own last step, so a
+# false positive is a task that cannot finish. Everything uncertain must pass.
+print("\n== pr-body-gate")
+with tempfile.TemporaryDirectory() as tmp:
+    long_body = os.path.join(tmp, "long.md")
+    with open(long_body, "w", encoding="utf8") as fh:
+        fh.write("## What\n\n" + ("Uma frase inteira que conta algo sobre a mudanca. " * 60) + "\n")
+    short_body = os.path.join(tmp, "short.md")
+    with open(short_body, "w", encoding="utf8") as fh:
+        fh.write("Fecha #1.\n\n## O que muda\n\nO botao passa a dizer Salvar.\n")
+    fenced = os.path.join(tmp, "fenced.md")
+    with open(fenced, "w", encoding="utf8") as fh:
+        fh.write("## Evidence\n\n```\n" + ("x" * 4000) + "\n```\n\nUma linha de prosa.\n")
+
+    for name, cmd, want in [
+        ("over budget by file", f"gh pr create --title x --body-file {long_body}", BLOCK),
+        ("over budget with =", f"gh pr create --body-file={long_body}", BLOCK),
+        ("over budget via -F", f"gh pr create -F {long_body}", BLOCK),
+        ("over budget inline", "gh pr create --body '" + ("Uma frase que conta algo. " * 90) + "'", BLOCK),
+        ("pr edit is guarded too", f"gh pr edit 7 --body-file {long_body}", BLOCK),
+        # Must not block. Each of these is a shape the gate cannot judge, or a
+        # body that fits, and blocking any of them strands the funnel.
+        ("body that fits", f"gh pr create --body-file {short_body}", PASS),
+        ("a fenced block is evidence, not prose", f"gh pr create --body-file {fenced}", PASS),
+        ("no body at all", "gh pr create --fill", PASS),
+        ("body file not written yet", "gh pr create --body-file /nonexistent/body.md", PASS),
+        ("not a pull request command", "npm test", PASS),
+        ("gh used for something else", "gh issue list --limit 5", PASS),
+        ("unparseable quoting fails open", 'gh pr create --body-file "unclosed', PASS),
+        ("budget raised by env", f"gh pr create --body-file {long_body}", PASS),
+    ]:
+        env = {"KIT_PR_BODY_MAX": "99999", "KIT_PR_BODY_SECTION_MAX": "99999"} if name == "budget raised by env" else None
+        check(f"pr-body-gate: {name}", run("pr-body-gate.py", bash(cmd), env), want)
+
 print()
 if failures:
     print(f"{len(failures)} falha(s): {', '.join(failures)}")

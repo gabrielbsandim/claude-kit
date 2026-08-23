@@ -172,7 +172,7 @@ request URL exists. Never done: the funnel does not merge.
 
 ## Hooks
 
-Two are registered, each protecting a property the funnel depends on:
+Three are registered, each protecting a property the funnel depends on:
 
 - **`env-guard`** blocks any shell command that would print a secret-bearing file
   into the transcript. A permission rule on file reads does not cover `cat`,
@@ -186,6 +186,15 @@ Two are registered, each protecting a property the funnel depends on:
   emptying a test, adding a skip or focus marker, lowering a coverage threshold,
   and `--no-verify`. A gate on a green suite is worth exactly what that suite is
   hard to fake. It also blocks `git push --force` without `--force-with-lease`.
+- **`pr-body-gate`** refuses a `gh pr create` or `gh pr edit` whose body is over
+  the `kit pr-body` budget. Both skills already said to run that check before
+  opening the pull request, and on the repository this was built against **17 of
+  the 17 pull requests opened in the six days after install were over budget**,
+  median 5798 characters of prose against 2000, worst 10545. An instruction that
+  is read and agreed with is not a gate. It imports `bin/pr-body` rather than
+  reimplementing the measurement, and fails open on everything it cannot judge:
+  a body file not written yet, `--fill`, an unparseable command. Raise the
+  budget for one repository with `KIT_PR_BODY_MAX`.
 
 Two more ship unregistered, because one is house style and the other updates
 software without being asked:

@@ -1,5 +1,5 @@
 {
-  "description": "Two guards the funnel depends on: secrets never reach a transcript, and a green suite cannot be faked. The em dash hook ships alongside but is not registered, because it is a house style rather than a correctness property.",
+  "description": "Three guards the funnel depends on: secrets never reach a transcript, a green suite cannot be faked, and the pull request body stays under the budget the skill asks for and nobody checked. The em dash hook ships alongside but is not registered, because it is a house style rather than a correctness property.",
   "hooks": {
     "PreToolUse": [
       {
@@ -14,6 +14,11 @@
             "type": "command",
             "timeout": 10,
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/protect-tests.py\""
+          },
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pr-body-gate.py\""
           }
         ]
       },
