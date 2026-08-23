@@ -216,19 +216,39 @@ software without being asked:
 
 Register the **shim**, never the Python file. The Python half lives under a directory
 named after the version, so registering it directly would pin the hook to one release
-and make the hook itself the next thing that goes silently stale.
+and make the hook itself the next thing that goes silently stale. Copying the Python
+file has the same fault and is quieter: the copy is right until the next release and
+says nothing after it. Measured on the machine this was written on, 2026-08-23:
+`~/.claude/hooks/` held an `env-guard` and a `no-em-dash` from three releases back,
+so the list of covered files and the list of exemptions actually in force were both
+the old ones, while the tests proving the new ones green passed all along.
+
+`kit-hook.sh` is the shim for any hook you register yourself, and takes the hook name
+as its argument:
 
 ```sh
-cp hooks/plugin-freshness.sh ~/.claude/hooks/
+cp hooks/kit-hook.sh hooks/plugin-freshness.sh ~/.claude/hooks/
 ```
 
 ```jsonc
+"PostToolUse": [
+  { "matcher": "Write|Edit|NotebookEdit", "hooks": [
+      { "type": "command", "timeout": 15,
+        "command": "sh ~/.claude/hooks/kit-hook.sh no-em-dash.py" } ] }
+],
 "SessionStart": [
   { "matcher": "startup|resume", "hooks": [
       { "type": "command", "timeout": 90,
         "command": "sh ~/.claude/hooks/plugin-freshness.sh" } ] }
 ]
 ```
+
+`plugin-freshness.sh` keeps its own file because it is named in instructions already
+followed on other machines. Everything after it goes through `kit-hook.sh`.
+
+Do **not** register `env-guard`, `protect-tests` or `pr-body-gate` yourself. The
+plugin registers all three, and a second registration runs them twice per tool call
+and gives the drift above somewhere to hide.
 
 The manual half is one command, and it prints the one line a session cannot run for
 itself:
