@@ -13,6 +13,7 @@
 #   kit issues tree <n>        an epic and its children, with state
 #   kit pr-body <file>         how much prose the pull request body adds
 #   kit context                how full the context is, and whether to compact
+#   kit usage                  what the main loop spent, and what the agents spent
 #   kit doctor                 is this machine ready
 #   kit version [expected]     which copy is running, and whether it is the newest
 #   kit reload                 update the plugin, relink `kit`, print the restart line
@@ -46,6 +47,7 @@ case "$cmd" in
   issues)   exec "$KIT_BIN/issues" "$@" ;;
   pr-body)  exec "$KIT_BIN/pr-body" "$@" ;;
   context)  exec "$KIT_BIN/context" "$@" ;;
+  usage)    exec "$KIT_BIN/usage" "$@" ;;
   worktree) exec "$KIT_BIN/worktree" "$@" ;;
   board)    exec "$KIT_BIN/board-move" "$@" ;;
   review)

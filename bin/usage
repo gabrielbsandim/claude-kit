@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""Where a session's tokens went: the main loop, or the agents it dispatched.
+
+    kit usage [--session ID] [--project DIR] [--all] [--json]
+
+`ccusage` answers what a day cost and which model spent it. What it does not
+answer, and what decides whether a stage is worth its model, is the split between
+the session you are talking to and the agents it dispatched. That split lives in
+the file layout: a subagent gets its own transcript under
+`<project>/<session>/subagents/agent-*.jsonl`, and its usage is never written into
+the parent.
+
+Measured across every transcript on the machine this was written on, 2026-08-23:
+349 subagent transcripts, 15747 requests, **19.6% of all tokens**. A funnel run
+dispatches five agents, so that is the number that says what a stage costs before
+you decide which model it should run.
+
+The rates and the request de-duplication come from `bin/context`, imported rather
+than copied, because a second copy of a rule is the defect this plugin shipped in
+`no-em-dash` until 0.9.2.
+"""
+
+import argparse
+import glob
+import importlib.machinery
+import importlib.util
+import json
+import os
+import sys
+
+
+def load_context():
+    """`bin/context` has no .py extension, so it is loaded by path."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "context")
+    loader = importlib.machinery.SourceFileLoader("kit_context", path)
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+CTX = load_context()
+
+
+def totals(paths):
+    """Summed usage over a set of transcripts, deduplicated the way context does."""
+    out = {"input": 0, "output": 0, "cache_write": 0, "cache_read": 0, "requests": 0}
+    for path in paths:
+        for usage in CTX.read_usage(path):
+            out["requests"] += 1
+            out["input"] += usage.get("input_tokens", 0)
+            out["output"] += usage.get("output_tokens", 0)
+            out["cache_write"] += usage.get("cache_creation_input_tokens", 0)
+            out["cache_read"] += usage.get("cache_read_input_tokens", 0)
+    out["tokens"] = out["input"] + out["output"] + out["cache_write"] + out["cache_read"]
+    out["cost"] = CTX.cost({
+        "input_tokens": out["input"],
+        "output_tokens": out["output"],
+        "cache_creation_input_tokens": out["cache_write"],
+        "cache_read_input_tokens": out["cache_read"],
+    })
+    return out
+
+
+def lanes(main_files):
+    """(main transcripts, the subagent transcripts belonging to them)."""
+    subs = []
+    for path in main_files:
+        stem = path[: -len(".jsonl")]
+        subs.extend(sorted(glob.glob(os.path.join(stem, "subagents", "*.jsonl"))))
+    return main_files, subs
+
+
+def resolve(cfg, args):
+    if args.all:
+        return sorted(glob.glob(os.path.join(cfg, "projects", "*", "*.jsonl"))), "every project"
+    session = args.session or os.environ.get("CLAUDE_CODE_SESSION_ID")
+    if session:
+        hit = CTX.find_session(cfg, session)
+        if hit:
+            return [hit], "session " + session[:8]
+        return [], "session " + session[:8] + ", no transcript"
+    project = os.path.join(cfg, "projects", CTX.slug_for(args.project or os.getcwd()))
+    newest = CTX.newest_transcript(project)
+    if newest:
+        return [newest], "newest transcript for this directory"
+    return [], "no transcript for this directory"
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--session")
+    ap.add_argument("--project")
+    ap.add_argument("--all", action="store_true")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("-h", "--help", action="store_true")
+    args = ap.parse_args(argv)
+    if args.help:
+        print(__doc__.strip())
+        return 0
+
+    cfg = os.environ.get("CLAUDE_CONFIG_DIR", os.path.expanduser("~/.claude"))
+    main_files, scope = resolve(cfg, args)
+    if not main_files:
+        print("no transcript found: %s" % scope)
+        return 1
+
+    main_files, sub_files = lanes(main_files)
+    m, s = totals(main_files), totals(sub_files)
+    total_tokens = m["tokens"] + s["tokens"]
+    share = 100.0 * s["tokens"] / total_tokens if total_tokens else 0.0
+
+    if args.json:
+        json.dump({"scope": scope, "main": m, "subagents": s,
+                   "subagent_share_pct": round(share, 1),
+                   "subagent_transcripts": len(sub_files)}, sys.stdout, indent=2)
+        print()
+        return 0
+
+    print("scope: %s" % scope)
+    print("%-11s %13s %12s %10s" % ("lane", "tokens", "requests", "US$"))
+    print("%-11s %13d %12d %10.2f" % ("main", m["tokens"], m["requests"], m["cost"]))
+    print("%-11s %13d %12d %10.2f  (%d transcripts)"
+          % ("subagents", s["tokens"], s["requests"], s["cost"], len(sub_files)))
+    print("subagents are %.1f%% of the tokens" % share)
+    print("\nList price, not what a subscription charges. The split is the number to"
+          "\nread: it is what a stage costs before you decide which model it runs.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

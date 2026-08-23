@@ -118,6 +118,9 @@ jobs:
       - name: The Stop hook blocks an unverified edit and nothing else
         run: python3 tests/test-phase-gate.py
 
+      - name: kit usage splits the main loop from the agents
+        run: python3 tests/test-usage.py
+
       - name: Frontmatter parses under a strict YAML parser
         run: |
           pip install --quiet pyyaml
