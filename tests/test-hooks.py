@@ -87,6 +87,18 @@ for cmd, want in [
     # And the boundaries must not let a real reader through.
     ("head ~/.claude.json", BLOCK),
     ("od -c .env", BLOCK),
+    # Combined short flags. `grep -rl` is how a list of files actually gets asked for,
+    # and the allowance was written `grep\s+-l\b`, which does not match it: the shape
+    # was documented as permitted and blocked anyway.
+    ("grep -rl mcpServers ~/.claude.json", PASS),
+    ("grep -lr TOKEN .env", PASS),
+    ("rg -l TOKEN .env", PASS),
+    ("grep --files-with-matches TOKEN .env", PASS),
+    ("grep -L TOKEN .env", PASS),
+    # -C is context and prints the matched line, so the cluster must not admit it.
+    ("grep -C3 TOKEN .env", BLOCK),
+    ("grep -rn TOKEN .env", BLOCK),
+    ("grep -o TOKEN .env", BLOCK),
 ]:
     check(f"env-guard: {cmd}", run("env-guard.py", bash(cmd)), want)
 

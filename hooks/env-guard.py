@@ -45,8 +45,12 @@ ALLOW = [
     r"--env-file[= ]",
     r"dotenv\s+-e",
     r"DOTENV_CONFIG_PATH=",
-    r"grep\s+-c\b",  # counting occurrences reveals no value
-    r"grep\s+-l\b",  # listing the file reveals no value
+    # -c, -l and -L all suppress the matched line, so they reveal no value. The flag is
+    # matched anywhere in a short cluster because `grep -rl` is how the list actually gets
+    # asked for, and `grep\s+-l\b` did not match it: the allowance existed and the command
+    # blocked anyway. Uppercase -C is context and is deliberately not in the class.
+    r"\b(grep|egrep|fgrep|rg)\b[^|;&]*?\s-[A-Za-z]*[clL]",
+    r"--(count|files-with-matches|files-without-match)\b",
     r"wc\s+-l",
 ]
 
