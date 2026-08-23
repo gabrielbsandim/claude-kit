@@ -1,5 +1,5 @@
 ---
-description: Groom the open backlog: what is the same work, what is an orphan, and what can ship in one pull request
+description: "Groom the open backlog: what is the same work, what is an orphan, and what can ship in one pull request"
 argument-hint: "[epic-number | label]"
 allowed-tools: Bash(*), Read
 ---

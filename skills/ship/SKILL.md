@@ -1,6 +1,7 @@
 ---
 name: ship
-description: Takes work that is already implemented and committed on a branch and ships it: runs the repo's ship gates off receipts, pushes, opens a draft pull request, moves the board to in review, and removes the worktree. Use when the code exists and the task is to get it reviewable, or on /ship, and not when anything still needs writing.
+disable-model-invocation: true
+description: "Takes work that is already implemented and committed on a branch and ships it: runs the repo's ship gates off receipts, pushes, opens a draft pull request, moves the board to in review, and removes the worktree. Use when the code exists and the task is to get it reviewable, or on /ship, and not when anything still needs writing."
 ---
 
 # ship: committed work to a draft pull request
@@ -93,8 +94,9 @@ and the tracker's own automation owns that column.
 `gc` removes only what it can prove is finished, which now includes an open pull request
 sitting at exactly this head, since everything is then on the remote and the branch
 survives removal. It keeps the rest and prints why, including a worktree with nothing of
-its own on it, which cannot be told apart from one another session just created. `rm
-<issue>` was the step here until 0.3.0 and could not succeed once the pull request existed.
+its own on it, which cannot be told apart from one another session just created.
+`rm <issue>` was the step here until 0.3.0 and could not succeed once the pull request
+existed.
 `gc --dry-run` first if you want to see the verdicts without acting.
 
 ## Stage 5 · Report

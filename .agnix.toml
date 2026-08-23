@@ -1,0 +1,21 @@
+# Config for `npx agnix`, the external linter for agent specs. It found five files
+# whose frontmatter was not valid YAML on 2026-08-23, which PyYAML then confirmed
+# independently, so it earns a place next to the repo's own tests.
+#
+#   npx agnix .            # what CI would see
+#   npx agnix --strict .   # warnings become errors
+#
+# Only rules that are wrong *for this repository* are turned off, and each says why.
+tools = ["claude-code"]
+severity = "Warning"
+exclude = ["node_modules/**", ".git/**", "tests/__pycache__/**", "hooks/__pycache__/**"]
+
+[tool_versions]
+claude_code = "2.1.241"
+
+# XP-003 warns that a hard-coded `.claude/` path is not portable across agent tools.
+# Every one of those paths is this plugin's own contract with Claude Code, and the
+# skills name the file the user has to create, so the literal is the point.
+[[overrides]]
+paths = ["commands/*.md", "skills/*/SKILL.md", "docs/*.md", "README.md"]
+disabled_rules = ["XP-003"]

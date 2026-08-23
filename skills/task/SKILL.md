@@ -1,6 +1,6 @@
 ---
 name: task
-description: Delivery funnel for one repository task: a feature, bug fix, refactor or chore. Takes a task description or issue number and runs triage and spec, implementation, tests and a scoped adversarial review, ending in a pushed branch and a draft pull request with the board moved. Every path, gate command and board id comes from .claude/funnel.config.json, so this runs on any stack. Use when the user asks to implement, fix, build or change something in this repository, or on /task <description | issue number>.
+description: "Delivery funnel for one repository task: a feature, bug fix, refactor or chore. Takes a task description or issue number and runs triage and spec, implementation, tests and a scoped adversarial review, ending in a pushed branch and a draft pull request with the board moved. Every path, gate command and board id comes from .claude/funnel.config.json, so this runs on any stack. Use when the user asks to implement, fix, build or change something in this repository, or on /task <description | issue number>."
 ---
 
 # task: one task, from description to draft pull request

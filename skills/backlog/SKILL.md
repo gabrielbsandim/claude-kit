@@ -1,6 +1,6 @@
 ---
 name: backlog
-description: Grooms an open backlog before the next task is picked: finds issues that are the same work, adopts orphans into the epic they belong to, and proposes what can ship in one pull request. Read-only until the user approves each move. Use when the board feels like it only grows, before planning a sprint or picking the next issue, or on /backlog [epic-number].
+description: "Grooms an open backlog before the next task is picked: finds issues that are the same work, adopts orphans into the epic they belong to, and proposes what can ship in one pull request. Read-only until the user approves each move. Use when the board feels like it only grows, before planning a sprint or picking the next issue, or on /backlog [epic-number]."
 ---
 
 # backlog: make the board readable before working from it
