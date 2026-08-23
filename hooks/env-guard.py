@@ -39,6 +39,7 @@ DOTENV = r"(?<![\w.])\.env(?![\w-]*\.?(example|sample|template|dist))(\.[A-Za-z0
 # Agent config that carries an inline `env` block per MCP server.
 AGENTCFG = r"(?<![\w.])\.(claude|mcp)\.json\b"
 ENVFILE = r"(?:" + DOTENV + r"|" + AGENTCFG + r")"
+GREP = r"(grep|egrep|fgrep|rg)"
 # Legitimate shapes that load a .env without printing it.
 ALLOW = [
     r"vercel\s+env\s+pull",
@@ -49,10 +50,27 @@ ALLOW = [
     # matched anywhere in a short cluster because `grep -rl` is how the list actually gets
     # asked for, and `grep\s+-l\b` did not match it: the allowance existed and the command
     # blocked anyway. Uppercase -C is context and is deliberately not in the class.
-    r"\b(grep|egrep|fgrep|rg)\b[^|;&]*?\s-[A-Za-z]*[clL]",
-    r"--(count|files-with-matches|files-without-match)\b",
-    r"wc\s+-l",
+    #
+    # Only other flags may sit between the tool and the flag. An earlier version wrote the
+    # gap as `[^|;&]*?`, which let `grep $(cat .env) -l x` satisfy the allowance and read
+    # the file through the substitution the allowance was never about.
+    r"\b" + GREP + r"\b(\s+-[A-Za-z-]+)*\s+-[A-Za-z]*[clL][A-Za-z]*\b",
+    r"\b" + GREP + r"\b(\s+-[A-Za-z-]+)*\s+--(count|files-with-matches|files-without-match)\b",
+    r"\bwc\s+(-[A-Za-z]+\s+)*-[A-Za-z]*l\b",
 ]
+# A substitution runs its own command with its own output, so an allowance granted to the
+# outer command says nothing about it.
+SUBSTITUTION = r"\$\(|`|<\("
+
+
+def segments(cmd: str) -> list:
+    """The shell's own boundaries.
+
+    ALLOW used to be tested against the whole command, so `grep -l x && cat .env`
+    presented one allowed clause and carried a second that read the file. The blocking
+    side already refused to cross `|;&`; only the allowing side did.
+    """
+    return re.split(r"[|;&\n]+", cmd)
 
 
 def main() -> int:
@@ -63,12 +81,20 @@ def main() -> int:
     cmd = (payload.get("tool_input") or {}).get("command") or ""
     if not cmd:
         return 0
-    if any(re.search(p, cmd) for p in ALLOW):
-        return 0
     if not re.search(ENVFILE, cmd):
         return 0
-    if re.search(READERS + r"[^|;&]*" + ENVFILE, cmd) or re.search(
-        r"(^|[;&|]\s*)(source|\.)\s+\S*" + ENVFILE, cmd
+    risky = [
+        s
+        for s in segments(cmd)
+        if re.search(ENVFILE, s)
+        and not (not re.search(SUBSTITUTION, s) and any(re.search(p, s) for p in ALLOW))
+    ]
+    if not risky:
+        return 0
+    if any(
+        re.search(READERS + r"[^|;&]*" + ENVFILE, s)
+        or re.search(r"^\s*(source|\.)\s+\S*" + ENVFILE, s)
+        for s in risky
     ):
         sys.stderr.write(
             "Blocked: the contents of a secret-bearing file do not enter context, and that\n"

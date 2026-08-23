@@ -99,6 +99,19 @@ for cmd, want in [
     ("grep -C3 TOKEN .env", BLOCK),
     ("grep -rn TOKEN .env", BLOCK),
     ("grep -o TOKEN .env", BLOCK),
+    # An allowance is per shell segment. Tested against the whole command, one allowed
+    # clause used to carry a second clause that read the file.
+    ("grep -l foo && cat .env", BLOCK),
+    ("grep -c KEY .env; cat .env", BLOCK),
+    ("wc -l x && head .env", BLOCK),
+    ("echo hi; grep -c KEY .env", PASS),
+    # A substitution runs its own command, so the outer allowance does not cover it.
+    ("grep $(cat .env) -l x", BLOCK),
+    ("grep -l `cat .env` x", BLOCK),
+    ("diff <(cat .env) x", BLOCK),
+    # The long flags belong to grep, not to whatever else is on the line.
+    ("cat .env --count", BLOCK),
+    ("cat .env --files-with-matches", BLOCK),
 ]:
     check(f"env-guard: {cmd}", run("env-guard.py", bash(cmd)), want)
 
