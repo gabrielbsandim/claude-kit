@@ -77,6 +77,16 @@ for cmd, want in [
     ("cat ~/.claude/settings.json", PASS),
     ("cat package.json", PASS),
     ("ls ~/.claude.json", PASS),
+    # A reader name buried inside an ordinary word is not a reader. Without the
+    # boundaries: "modo" carries od, "only" carries nl, "shortcut" carries cut.
+    ("echo modo 600 ~/.claude.json", PASS),
+    ("echo only ~/.claude.json is affected", PASS),
+    ("echo shortcut to .env.example", PASS),
+    ("stat ~/.claude.json", PASS),
+    ("wc -c ~/.claude.json", PASS),
+    # And the boundaries must not let a real reader through.
+    ("head ~/.claude.json", BLOCK),
+    ("od -c .env", BLOCK),
 ]:
     check(f"env-guard: {cmd}", run("env-guard.py", bash(cmd)), want)
 

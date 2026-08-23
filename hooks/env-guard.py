@@ -25,10 +25,14 @@ import json
 import re
 import sys
 
-# Utilities that print file contents.
+# Utilities that print file contents. The word boundaries are not decoration:
+# without them `od` matches inside "modo", `nl` inside "only" and `cut` inside
+# "shortcut", so any sentence near a covered filename blocks. That stayed
+# invisible while only `.env` was covered, because prose rarely sits beside it,
+# and surfaced the hour `.claude.json` joined the list.
 READERS = (
-    r"(cat|bat|less|more|head|tail|nl|od|xxd|strings|grep|rg|egrep|fgrep|awk|sed|cut"
-    r"|sort|uniq|tee|cp|mv|base64|jq|yq|printenv|env\b)"
+    r"(?<![\w.-])(cat|bat|less|more|head|tail|nl|od|xxd|strings|grep|rg|egrep|fgrep|awk|sed|cut"
+    r"|sort|uniq|tee|cp|mv|base64|jq|yq|printenv|env)(?![\w-])"
 )
 # .env, .env.local, .env.prod, but never .env.example / .sample / .template / .dist.
 DOTENV = r"(?<![\w.])\.env(?![\w-]*\.?(example|sample|template|dist))(\.[A-Za-z0-9_-]+)?\b"
