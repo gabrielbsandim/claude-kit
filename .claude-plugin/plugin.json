@@ -1,6 +1,6 @@
 {
   "name": "claude-kit",
-  "version": "0.9.8",
+  "version": "0.9.9",
   "description": "A delivery funnel for one repository task: triage, spec, implement, test, adversarial review, draft pull request. Every path, gate command and board id comes from a per-repo config file, so the same funnel runs on any stack. Ships the scripts that make worktree teardown, gate receipts and board moves deterministic instead of remembered.",
   "author": {
     "name": "Gabriel Sandim",
