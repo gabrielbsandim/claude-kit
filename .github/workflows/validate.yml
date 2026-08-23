@@ -115,6 +115,20 @@ jobs:
           pip install --quiet pyyaml
           python3 tests/check-eval-schema.py
 
+      - name: The Stop hook blocks an unverified edit and nothing else
+        run: python3 tests/test-phase-gate.py
+
+      - name: Frontmatter parses under a strict YAML parser
+        run: |
+          pip install --quiet pyyaml
+          python3 tests/check-frontmatter.py
+
+      # The external spec linter. Warnings are visible and do not fail the job: the
+      # one open warning is that task/SKILL.md is 670 lines, which is a real signal
+      # and its own piece of work, not something to silence here.
+      - name: agnix
+        run: npx --yes agnix@0.49.0 .
+
       - name: Templates are valid JSON
         run: for f in templates/*.json .claude-plugin/*.json; do jq -e . "$f" > /dev/null; done
 

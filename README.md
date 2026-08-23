@@ -196,14 +196,25 @@ Three are registered, each protecting a property the funnel depends on:
   a body file not written yet, `--fill`, an unparseable command. Raise the
   budget for one repository with `KIT_PR_BODY_MAX`.
 
-Two more ship unregistered, because one is house style and the other updates
-software without being asked:
+Three more ship unregistered, because one is house style, one updates software
+without being asked, and one decides when a turn is allowed to end:
 
 - **`no-em-dash`** enforces house style rather than correctness. It exempts
   nothing by default: the earlier version exempted `docs/**` and the root
   markdown files, which contradicted the rule it exists to enforce and left 820
   files carrying the character on the repository it was written against. Export
   `NO_EM_DASH_EXEMPT`, a colon-separated list of regexes, to loosen it.
+- **`phase-gate`** is a `Stop` hook that refuses to end a turn whose last edit to a
+  source file had no command after it. It is the enforcement half of a rule the
+  skills already teach: a phase reported done without the command that verifies it
+  is the phase that comes back. It does not judge which command ran, because useful
+  verification runs from a full suite to a `grep -c` that proves a count, and a hook
+  that ranked those would be wrong often enough to get switched off. It ignores
+  prose, scratchpad paths, subagent transcripts and turns with no edit. Measured
+  against the 66 turns of the session it was written in, it fires on none of them,
+  while the first draft fired on the write-then-compile idiom most of those turns
+  are made of, which is why a compound Bash call counts as verifying itself.
+  `KIT_PHASE_GATE=off` disables it.
 - **`plugin-freshness`** is a `SessionStart` hook that updates this plugin, relinks
   the `kit` on PATH, and says in the session's own context when the skills it loaded
   are the previous version. It cannot make a running session current, because
@@ -240,6 +251,11 @@ cp hooks/kit-hook.sh hooks/plugin-freshness.sh ~/.claude/hooks/
   { "matcher": "startup|resume", "hooks": [
       { "type": "command", "timeout": 90,
         "command": "sh ~/.claude/hooks/plugin-freshness.sh" } ] }
+],
+"Stop": [
+  { "hooks": [
+      { "type": "command", "timeout": 15,
+        "command": "sh ~/.claude/hooks/kit-hook.sh phase-gate.py" } ] }
 ]
 ```
 
@@ -320,7 +336,10 @@ python3 tests/test-kit-version.py      # 19 cases: the three copies of this plug
 python3 tests/test-issues.py           # 17 cases: what counts as the same work, and what a false no costs
 python3 tests/test-plugin-freshness.py # 27 cases, most of them "must stay silent and must not fail"
 python3 tests/check-eval-schema.py     # eval frontmatter against the harness's allowed keys
+python3 tests/check-frontmatter.py     # every frontmatter block through a strict YAML parser
+python3 tests/test-phase-gate.py       # 18 cases: 5 must block, 13 must not
 claude plugin validate . --strict      # manifests, skills, agents, commands
+npx agnix .                            # the external spec linter, configured by .agnix.toml
 ```
 
 CI runs all of those, plus a syntax check per script dispatched on the shebang,
