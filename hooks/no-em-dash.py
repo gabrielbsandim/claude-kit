@@ -13,8 +13,12 @@ Two design rules, both learned by getting them wrong first:
      the whole file. Billing whoever edited one line for the file's legacy
      content produces a guaranteed false positive and trains everyone to ignore
      the hook.
-  2. Exempt the paths where an em dash is normal English typesetting. The
-     default list is docs/ plus the root markdown files; override it with
+  2. No exemption by default, decided 2026-08-17. The earlier version exempted
+     English technical documents (`docs/**`, AGENTS.md, CONTRIBUTING.md,
+     README.md), and that contradicted the rule this hook exists to enforce,
+     which is "never, in anything". Measured on the repository it was written
+     against: the exemption was letting 820 files keep the character while the
+     rule said none should. To loosen it without editing code, export
      NO_EM_DASH_EXEMPT, a colon-separated list of regexes.
 
 Exit 2 returns stderr to the model as a correction. The edit already landed, so
@@ -26,14 +30,8 @@ import re
 import sys
 
 DASH = "\u2014"  # escaped on purpose: this file must not contain the literal
-DEFAULT_EXEMPT = [
-    r"/docs/",
-    r"/AGENTS\.md$",
-    r"/CONTRIBUTING\.md$",
-    r"/README\.md$",
-    r"/CHANGELOG\.md$",
-]
-EXEMPT = [p for p in (os.environ.get("NO_EM_DASH_EXEMPT") or "").split(":") if p] or DEFAULT_EXEMPT
+# Empty by default: the rule is absolute. NO_EM_DASH_EXEMPT loosens it per machine.
+EXEMPT = [p for p in (os.environ.get("NO_EM_DASH_EXEMPT") or "").split(":") if p]
 
 
 def new_text(tool_input: dict) -> str:
@@ -65,8 +63,8 @@ def main() -> int:
     sys.stderr.write(
         f"Em dash in the text you just wrote to {path} ({count}x).\n"
         f"  line: {sample}\n"
-        "Rewrite with a comma, a colon or parentheses. Exempt paths: "
-        + ", ".join(EXEMPT)
+        "Rewrite with a comma, a colon or parentheses. The rule is absolute; "
+        + ("exempt here: " + ", ".join(EXEMPT) if EXEMPT else "to loosen it, export NO_EM_DASH_EXEMPT")
         + "\n"
     )
     return 2

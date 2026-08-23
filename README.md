@@ -174,9 +174,14 @@ request URL exists. Never done: the funnel does not merge.
 
 Two are registered, each protecting a property the funnel depends on:
 
-- **`env-guard`** blocks any shell command that would print a `.env` into the
-  transcript. A permission rule on file reads does not cover `cat`, `grep` or
-  `source`, and that is the path a real leak took.
+- **`env-guard`** blocks any shell command that would print a secret-bearing file
+  into the transcript. A permission rule on file reads does not cover `cat`,
+  `grep` or `source`, and that is the path a real leak took. It covers `.env*`
+  and, since 0.9.2, `.claude.json` and `.mcp.json`: both hold an `env` block per
+  MCP server, which is where a token lands when a server is registered with
+  `--env TOKEN=...`, and a real HubSpot private-app token was found sitting in
+  plain text in one of them, outside every deny rule. `grep -c`, `grep -l` and
+  `wc -l` still pass, because a count reveals no value.
 - **`protect-tests`** refuses the four ways a green suite gets faked: deleting or
   emptying a test, adding a skip or focus marker, lowering a coverage threshold,
   and `--no-verify`. A gate on a green suite is worth exactly what that suite is
@@ -185,7 +190,11 @@ Two are registered, each protecting a property the funnel depends on:
 Two more ship unregistered, because one is house style and the other updates
 software without being asked:
 
-- **`no-em-dash`** enforces house style rather than correctness.
+- **`no-em-dash`** enforces house style rather than correctness. It exempts
+  nothing by default: the earlier version exempted `docs/**` and the root
+  markdown files, which contradicted the rule it exists to enforce and left 820
+  files carrying the character on the repository it was written against. Export
+  `NO_EM_DASH_EXEMPT`, a colon-separated list of regexes, to loosen it.
 - **`plugin-freshness`** is a `SessionStart` hook that updates this plugin, relinks
   the `kit` on PATH, and says in the session's own context when the skills it loaded
   are the previous version. It cannot make a running session current, because
