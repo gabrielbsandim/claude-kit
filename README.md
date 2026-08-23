@@ -97,6 +97,7 @@ Ten things are commands rather than instructions, because prose does not execute
 | `kit review <level>` | one dispatch per reviewer and a blanket document load. One dispatch per slice instead, with the diff written to a file so no reviewer runs `git`. |
 | `kit screens` | guessing which URL renders a component the diff changed. It walks the import graph to the router entry point that reaches it. |
 | `kit board <status>` | two board writes, behind one port with three adapters. |
+| `kit usage` | guessing what a dispatched stage costs. A subagent's usage is never written into its parent transcript, it lives under `<project>/<session>/subagents/`, so a reader that globs only the parent reports every agent as free. Measured across every transcript on this machine, 2026-08-23: 350 subagent transcripts, 15759 requests, 19.6% of all tokens. |
 | `kit review --disjoint a b` | guessing whether two stages can run in parallel. It answers from the file lists. |
 | the `flaky` list | a red gate in a file the diff never touched becoming a wasted fix round. |
 
@@ -104,6 +105,22 @@ What stays a model decision is the judgment: the triage verdict, whether a scope
 too big for one pull request, whether a finding is confirmed or merely plausible,
 and "a round whose fix is larger than the original commit is not a round, it is the
 spec having been wrong".
+
+### Which model each stage runs
+
+Four of the five agents are `model: inherit` and one, `funnel-test-writer`, is
+`model: sonnet`. The criterion is not how hard the stage looks, it is **how its
+mistakes surface**. A test writer's mistake fails `kit gate` in front of you, out
+loud, before anything is pushed. A screen lens's mistake is a green report from a
+session that never left the login page, and a reviewer's mistake is a finding
+nobody raises: both are silent passes, and a silent pass is the failure this whole
+plugin exists to prevent. So a stage is downgraded only when a wrong answer is
+loud, and the ones that judge stay on the session's model.
+
+Two things that look like candidates and are not. Commit, push and the board move
+are `kit` commands, not model calls, so there is nothing to downgrade there. And
+`funnel-triage` is the cheapest-looking stage that is actually the most expensive
+mistake: a wrong verdict there decides whether the other four run at all.
 
 ## Screens, in a real browser
 
@@ -338,6 +355,7 @@ python3 tests/test-plugin-freshness.py # 27 cases, most of them "must stay silen
 python3 tests/check-eval-schema.py     # eval frontmatter against the harness's allowed keys
 python3 tests/check-frontmatter.py     # every frontmatter block through a strict YAML parser
 python3 tests/test-phase-gate.py       # 18 cases: 5 must block, 13 must not
+python3 tests/test-usage.py            # 8 cases: the lane split, and counting a request once
 claude plugin validate . --strict      # manifests, skills, agents, commands
 npx agnix .                            # the external spec linter, configured by .agnix.toml
 ```

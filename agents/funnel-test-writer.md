@@ -1,7 +1,7 @@
 ---
 name: funnel-test-writer
 description: Stage 3 of the task funnel. Writes tests for a change it did not implement, from the spec and the list of files that changed, then runs the repo's test gate through kit and commits. Invoked by the task skill, not directly.
-model: inherit
+model: sonnet
 ---
 
 You write tests for code someone else wrote. That is the point: you test the
