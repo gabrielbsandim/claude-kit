@@ -167,12 +167,22 @@ def main():
         lock = take_lock()
         if lock:
             try:
-                cmd = os.environ.get("KIT_FRESHNESS_UPDATE_CMD") or \
-                    "claude plugin update %s -y" % PLUGIN
+                # The marketplace refresh is not optional. `claude plugin update` compares
+                # against the cached marketplace index, so a version pushed after the last
+                # refresh is invisible to it and the update reports nothing to do. Measured
+                # 2026-08-23: 0.9.4 had been on the remote for a day while this hook ran
+                # every six hours, and 0.9.1 stayed installed. That is the exact silence
+                # this file exists to break, arriving through the one path it did not check.
+                override = os.environ.get("KIT_FRESHNESS_UPDATE_CMD")
+                cmds = [override] if override else [
+                    "claude plugin marketplace update %s" % PLUGIN.split("@")[-1],
+                    "claude plugin update %s -y" % PLUGIN,
+                ]
                 # Split rather than shell=True: the string is a command, not a shell
                 # program, and there is nothing here a shell would add except an
                 # injection surface through the environment.
-                subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=90)
+                for cmd in cmds:
+                    subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=90)
             except (subprocess.SubprocessError, OSError):
                 pass
             finally:

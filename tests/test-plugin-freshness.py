@@ -225,6 +225,37 @@ def main():
             env=dict(os.environ, CLAUDE_CONFIG_DIR=os.path.join(root, "empty"),
                      KIT_FRESHNESS_INTERVAL="0", KIT_FRESHNESS_UPDATE_CMD="true"))
         check("empty stdin exits zero", empty.returncode, 0)
+
+        # With no override, the hook must refresh the marketplace before updating.
+        # `claude plugin update` reads the cached index, so without the refresh a
+        # version pushed since the last one is invisible and the update is a no-op
+        # that reports success. That is how 0.9.1 stayed installed against a 0.9.4
+        # remote while this hook ran every six hours.
+        fake_dir = tempfile.mkdtemp(prefix="kit-fake-bin-", dir=root)
+        log = os.path.join(fake_dir, "calls.log")
+        fake = os.path.join(fake_dir, "claude")
+        with open(fake, "w") as fh:
+            fh.write('#!/bin/sh\necho "$@" >> "%s"\n' % log)
+        os.chmod(fake, 0o755)
+        cfg8 = os.path.join(root, "market")
+        install(cfg8, "1.0.0")
+        run(cfg8, os.path.join(root, "bin8"), update_cmd="",
+            extra={"PATH": fake_dir + os.pathsep + os.environ["PATH"]})
+        calls = open(log).read() if os.path.exists(log) else ""
+        check("refreshes the marketplace index", calls, "marketplace update claude-kit",
+              contains)
+        check("and then updates the plugin", calls, "plugin update claude-kit@claude-kit",
+              contains)
+        # An explicit override owns the whole update path and gets no extra call.
+        log2 = os.path.join(fake_dir, "calls2.log")
+        with open(fake, "w") as fh:
+            fh.write('#!/bin/sh\necho "$@" >> "%s"\n' % log2)
+        os.chmod(fake, 0o755)
+        cfg9 = os.path.join(root, "market-override")
+        install(cfg9, "1.0.0")
+        run(cfg9, os.path.join(root, "bin9"), update_cmd="true",
+            extra={"PATH": fake_dir + os.pathsep + os.environ["PATH"]})
+        check("an override suppresses both", os.path.exists(log2), False)
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
