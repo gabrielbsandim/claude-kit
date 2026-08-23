@@ -58,6 +58,11 @@ for cmd, want in [
     ("source .env.prod", BLOCK),
     ("cp .env /tmp/x", BLOCK),
     ("head -5 .env.wa", BLOCK),
+    # Agent config holds an env block per MCP server, so it leaks the same way.
+    ("cat ~/.claude.json", BLOCK),
+    ("jq .mcpServers ~/.claude.json", BLOCK),
+    ("grep TOKEN .mcp.json", BLOCK),
+    ("cat /home/x/.claude.json", BLOCK),
     # Must not block: these are how a .env is used correctly, or not used at all.
     ("cat .env.example", PASS),
     ("cat .env.sample", PASS),
@@ -67,6 +72,11 @@ for cmd, want in [
     ("echo $DATABASE_URL", PASS),
     ('node -e "console.log(process.env.PORT)"', PASS),
     ("python3 -c 'import os; os.environ[\"X\"]'", PASS),
+    # Counting or listing reveals no value, and the settings file is not the config file.
+    ("grep -c mcpServers ~/.claude.json", PASS),
+    ("cat ~/.claude/settings.json", PASS),
+    ("cat package.json", PASS),
+    ("ls ~/.claude.json", PASS),
 ]:
     check(f"env-guard: {cmd}", run("env-guard.py", bash(cmd)), want)
 
@@ -112,8 +122,10 @@ hook_src = os.path.join(ROOT, "hooks", "no-em-dash.py")
 for name, payload, env, want in [
     ("em dash in a note", write("/tmp/x/nota.md", f"texto {DASH} aqui"), None, BLOCK),
     ("no em dash", write("/tmp/x/nota.md", "texto normal"), None, PASS),
-    ("exempt path by default", write("/tmp/x/docs/a.md", f"a {DASH} b"), None, PASS),
-    ("exemption overridden to nothing", write("/tmp/x/docs/a.md", f"a {DASH} b"), {"NO_EM_DASH_EXEMPT": "/never-matches/"}, BLOCK),
+    # No exemption by default: an English technical document is still covered.
+    ("docs path not exempt by default", write("/tmp/x/docs/a.md", f"a {DASH} b"), None, BLOCK),
+    ("exemption is opt-in and matches", write("/tmp/x/docs/a.md", f"a {DASH} b"), {"NO_EM_DASH_EXEMPT": "/docs/"}, PASS),
+    ("exemption is opt-in and misses", write("/tmp/x/docs/a.md", f"a {DASH} b"), {"NO_EM_DASH_EXEMPT": "/never-matches/"}, BLOCK),
     # A hook that flags its own source is a hook nobody can maintain.
     ("its own source", write(hook_src, open(hook_src, encoding="utf8").read()), None, PASS),
 ]:
