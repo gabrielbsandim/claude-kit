@@ -13,6 +13,12 @@ the code.
 Input: the task description or issue number after the command. Empty → ask which
 task and stop.
 
+Two files sit next to this one and are **not** loaded with it. `review.md` is stage 4
+in full, and stage 4 says to read it before dispatching. `evidence.md` is the
+measurement behind every rule here that reads as arbitrary; open it when you are about
+to disagree with a rule or adapt the funnel to a repository it was not written
+against, never to run a task.
+
 ## The repo describes itself
 
 Nothing in this skill knows your paths, commands or board. All of that is in
@@ -37,16 +43,9 @@ slice.
 kit version 0.9.8
 ```
 
-The literal is the version this file shipped in, so the command is comparing the text
-you are reading against what is installed on the machine. Measured on 2026-08-17: a
-funnel run executed the 0.1.0 skill while a newer one existed upstream, so that task
-ran without a browser lens, without the report cap, and without two other rules that
-had already shipped, and nothing in its output said so.
-
-The cause was the **installed** copy being old, not the session holding an old one.
-A skill body is re-read at each invocation: the same unrestarted session loaded this
-file from 0.1.0 at 14:11, from 0.1.1 at 19:03 and from 0.3.1 at 23:16. So a STALE KIT
-is the case that actually bites here, and it is the one you can fix without stopping.
+The literal is the version this file shipped in, so the command compares the text you
+are reading against what is installed. STALE KIT is the case that actually bites, and
+it is the one you can fix without stopping (`evidence.md` &middot; *Stale kit*).
 
 - **STALE SKILL**: the caller declares a version newer than anything installed, which
   means this file came from somewhere the machine does not have. Tell the user in one
@@ -99,19 +98,12 @@ is the case that actually bites here, and it is the one you can fix without stop
   prints the parent's existing children. Two distinctive files in common means it is
   the same work: comment there, or deliver both in one pull request. Then, if you do
   create it, **link it to a parent** with `addSubIssue`, or write in the issue why it
-  stands alone. Measured on 2026-08-17 in the repository this was built against:
-  eleven security issues in two days, nine of them correctly linked, and the only
-  two orphans were the two created as findings mid-task. An orphan is what turns an
-  epic with children into a flat list that reads as growing forever, which is what
-  the backlog felt like while the count was in fact flat at 18 open.
+  stands alone (`evidence.md` &middot; *Orphan issues*).
 
 - **Compact at a boundary, never at a percentage, and always before a pause.**
   Compacting is cheap and a prefix rewrite is not, and the rewrite is not something
-  you choose. Measured across 16 sessions, 2026-08-11 to 2026-08-18, at
-  API-equivalent rates: US$ 2442 spent, **US$ 393 of it, 16%, on requests that read
-  almost nothing from cache and wrote a whole prefix back**, at US$ 2.62 each
-  against US$ 0.20 for a normal request. So the value of compacting is not the
-  cheaper reads afterwards, it is that the rewrite which happens anyway is smaller.
+  you choose. The value of compacting is not the cheaper reads afterwards, it is that
+  the rewrite which happens anyway is smaller (`evidence.md` &middot; *Prefix rewrite*).
 
   ```
   kit context
@@ -124,11 +116,9 @@ is the case that actually bites here, and it is the one you can fix without stop
 
   The end of a unit of work is the trigger; the percentage is only how urgent the
   next boundary is. Compacting mid-task trades a dollar for file re-reads that cost
-  more and come back worse. One case ignores the percentage: **before a long pause.**
-  In the session measured on Bedrock, 116 of 152 prefix rewrites followed a gap of 5
-  to 60 minutes, at a median of 301,026 tokens and US$ 1.89 each, because that route
-  was not getting the one-hour cache TTL. A pause with a large prefix is the only
-  place one request costs five dollars.
+  more and come back worse. One case ignores the percentage: **before a long pause**,
+  where a large prefix is the only place one request costs five dollars
+  (`evidence.md` &middot; *A pause is the expensive moment*).
 
 ### Effort level, declared by the spec in stage 1
 
@@ -153,10 +143,9 @@ pass**, not permission to iterate, because a round is the expensive unit.
 - No worktree yet. Triage and spec change no file, and the environment is paid
   for only after the spec gate says the task is real.
 - **Which lane.** Answered here, before the triage dispatch, because triage is
-  already the floor: measured on the 2026-08-17 run of one issue, the triage agent
-  alone cost 9.4 minutes and about US$ 2.46 of the run's US$ 33, so a "this was
-  too small" answer coming out of triage pays the floor before saying the floor
-  was not worth paying.
+  already the floor: a "this was too small" verdict coming out of triage has already
+  paid the floor before saying the floor was not worth paying (`evidence.md`
+  &middot; *The triage floor*).
 
 ### The two lanes, and what they share
 
@@ -178,11 +167,12 @@ command behind it happens in both:
 | `kit board in_review`, `kit worktree gc --yes` | yes | yes |
 
 So the short lane still moves the card, still runs lint, types and tests, still
-opens a reviewable pull request and still tears the worktree down. What it does
-not buy is four to seven clean-context agents reading a diff that has nothing for
-them to read. An issue already on the board is used and moved; the short lane
-never creates one, because a typo that opens an issue is the backlog growth the
-funnel-wide rule above exists to stop.
+opens a reviewable pull request and still tears the worktree down. What it does not
+buy is clean-context agents reading a diff that has nothing for them to read.
+
+An issue already on the board is used and moved; the short lane never creates one,
+because a typo that opens an issue is the backlog growth the funnel-wide rule above
+exists to stop.
 
 ### The short lane is for a change with no reviewable surface
 
@@ -234,12 +224,9 @@ also why it is the only one that can return a green report from a session that
 never left the login page. It is told to refuse that outcome by name.
 
 **Exactly one screen lens at a time, and this was measured rather than assumed.**
-The behaviour half and the interface half were two agents until two of them were
-run concurrently against this MCP server: one agent's `browser_evaluate` read the
-*other* agent's page in three rounds out of four, and matched only after the other
-stopped navigating. One server, one browser, one tab, no per-caller isolation. So
-the two halves are numbered parts of one dispatch, which also means each route is
-visited once instead of twice.
+One server, one browser, one tab, no per-caller isolation, so the behaviour half and
+the interface half are numbered parts of one dispatch, which also means each route is
+visited once instead of twice (`evidence.md` &middot; *One browser, one tab*).
 
 The task-specific half still travels in the prompt. The agent carries what is true of that
 stage in every task; the dispatch carries this task.
@@ -400,173 +387,27 @@ On the repository this was built against, a `deep` review goes from 7 dispatches
 reading 4,256 diff lines and 517 KB of documents to 4 dispatches reading 2,043
 lines and 117 KB. Reproduce with `kit review deep` on any branch.
 
-### The screens, in a real browser, in the same round
+### What stage 4 owes you before the dispatches go out
 
-A diff lens reads what the code says. It cannot tell you that the submit button
-is below the fold on a phone, that the table scrolls the page sideways, or that
-the save succeeds and the screen says nothing. So when the change touched a
-screen, the review has a browser half that runs alongside the diff dispatches.
+Read `review.md` in this skill's directory now, before writing a single dispatch. It
+carries the browser half, what may actually run at once, the reviewer discipline, the
+two lenses most repos are missing, and the grading rubric. What follows is only what
+a skipped read must not lose:
 
-```
-kit screens          # the routes, and the ones it could not resolve
-kit screens --json   # the same, to paste into the two dispatches
-```
-
-`kit screens` walks the import graph from each changed file up to the router
-entry point that reaches it, so a component nested three levels below a page
-still yields a URL. Nothing here guesses a route inside a prompt.
-
-Run the browser half when **all three** hold, and skip it silently otherwise:
-
-1. `browser.enabled` is true,
-2. the effort level is in `browser.efforts`,
-3. `kit screens` returned at least one route under `visit`.
-
-Then **one** dispatch to `claude-kit:funnel-screen-lens`, answering two numbered
-parts from one visit per route: part 1 is whether it works, part 2 is whether it
-can be used. It gets the base URL, the `visit` list verbatim, the viewports, the
-spec's acceptance criteria, and `browser.uxDocs`, which is what anchors part 2 to
-this repo's conventions instead of to taste. One, not two, for the reason in the
-agent table: the browser is shared and two of them corrupt each other's reads.
-
-**Four things this stage owes you, and each one has bitten:**
-
-- **You bring the app up, because the lens cannot.** The agent has no `Bash` on
-  purpose, so `browser.start` and the `readyPath` poll are yours. A dispatch sent
-  at a port with nothing on it returns findings about a connection error.
-- **A port that answers is not proof it is your build.** `readyPath` proves
-  something is listening. If a dev server from an earlier task is still up on that
-  port, the lens reviews that build and reports it as this branch. Check the port
-  before starting, and if something is already there, either reuse it knowingly or
-  stop: two `npm run dev` on one port do not both bind it, and the second one
-  silently picks another port that `baseUrl` does not name.
-- **`kit screens` printing `blocked` is a result, not noise.** A dynamic route
-  with no value in `routeParams` and a component no page imports are both screens
-  nobody is going to look at. Carry them into the report.
-- **Credentials by environment variable name only.** `funnel-config check` refuses
-  a value in `browser.auth`, and the agent has no `Bash`, so it cannot read a
-  secret the dispatch did not already hand it.
-
-A finding from the lens is a finding like any other: same ledger, same rounds,
-blocks nothing on its own. A browser is the most nondeterministic thing in this
-funnel, so it never becomes a gate.
-
-### What may actually run at once
-
-The point of parallelism here is wall clock, so it is worth being exact about what
-overlaps and what only looks like it does. Three lanes, and the rule is that a
-lane owns a resource:
-
-| Lane | Owns | How many at once |
-| --- | --- | --- |
-| review | nothing, it only reads diff files | up to `maxParallelAgents` |
-| browser | the shared browser, the dev server, the app's data | exactly 1 |
-| gates | the working tree | `gateJobs`, with `exclusive` gates alone |
-
-The review lane and the browser lane genuinely overlap: different resources,
-no contention. Lanes are not a licence to fan out further inside one, and
-two things that look parallelizable are not:
-
-- **Two vitest runs in one working tree.** Not a theory: in the repository this
-  was built against, `src/tests/setup-dom.test.ts` writes a config file into the
-  working directory under a fixed name and deletes it in `afterAll`, and any
-  coverage run `rm -rf`s its own report directory at startup. Either one makes the
-  other run fail for a reason that has nothing to do with the change. That is what
-  `exclusive` is for, and it is why `gateJobs` defaults to 1.
-- **The browser lane next to a heavy gate, on a small machine.** Measured on the
-  box this was written on: 6 cores, 5.9 GB of RAM with about 3 GB free, a dev
-  script that asks for an 8 GB V8 heap ceiling, vitest pinned to 4 workers, and
-  Chromium on top. Overlapping the browser with lint and types is free.
-  Overlapping it with the suite is how a gate fails for memory and gets read as a
-  flake. Check the machine before assuming the lane is free.
-
-Before raising `gateJobs`, run `kit config check`: it prints, per stage, exactly
-which gates would share and which run alone, and it fails when one gate's command
-expands to another's plus a flag, since that stage is paying for the same work
-twice.
-
-What this is worth, measured on the repository this was built against: the `ship`
-stage runs in **268.7s** where the same four gates in series cost 423.5s. Note
-where that came from, because it decides where to look next: 142.5s of it was a
-duplicated suite run that concurrency would have hidden rather than fixed, and
-only 13s was the overlap. Removing work beats overlapping it.
-
-### Reviewer discipline, pure token gain
-
-Put these in every review dispatch:
-
-- **Read the diff file you were given, once.** Its context lines are the changed
-  file. Do not open the file again unless a hunk is cut off, and do not run
-  `git` at all.
-- Do not sweep the codebase. Look outside the diff only for a **named** risk,
-  one focused check, naming both the risk and the check.
-- Do not run the suite. The implementer already did. A focused test only for a
-  specific doubt.
-- **A reviewer does not dispatch subagents.** A reviewer spawned by a reviewer
-  duplicates another at full cost and its verdict carries no weight.
-- The final message **is** the report: verdict first, no preamble, no closing
-  summary.
-
-### The two lenses most repos are missing
-
-Both were the human reviewer's finding number one on the first two pull requests
-this funnel delivered, and none of the code lenses had reached them.
-
-**`failure-edges`**. Walk every new I/O call and answer, per call: is there a
-`catch`, is there a timeout, does the failure leave a log, and what is lost if it
-throws here. One shipped pull request had a fetch with neither `catch` nor
-timeout, so a network failure became a raw 500 instead of the route's own 502
-contract. Another shipped a paid call with no `catch` on a webhook that answers
-200 to everything: a throw after the charge lost the cost silently, with no retry
-behind it.
-
-**`claims`**. Every sentence this change writes **or leaves standing** is
-re-read against the code as committed. The other lenses verify what the pull
-request body asserts, and verify it well. What gets through is the prose the
-change **falsified**: a comment still calling 16 MB the ceiling after the change
-introduced a 1 MB one, a runbook naming a guard at a step the code no longer runs
-it at, a help entry promising an answer a new cap refuses. `kit review` hands
-this lens a **grep-precomputed candidate list** instead of two 15 KB files to
-read, built from the declaration names and multi-digit literals the diff touched.
-Candidates, not findings: each is verified against the code.
-
-### Rounds are the expensive unit
-
-Rubric, in every dispatch, because an uncalibrated reviewer is what multiplies
-rounds:
-
-- **Critical**: data loss, security, money, breaks production.
-- **Important**: the task is not trustworthy until fixed: incorrect or fragile
-  behaviour, a missed requirement, a literal duplicated block of logic, a
-  swallowed error, a test that asserts nothing.
-- **Minor**: "coverage could be broader", naming, style. **Minor never enters
-  the loop.** It goes to a deferred ledger, which is a file, not prose in the
-  pull request.
-
-Then: **CONFIRMED** → back to stage 2 with the finding as the spec.
-**PLAUSIBLE** → one line each in the "points of attention" section of the pull
-request body, capped like every other section, with the reasoning in the ledger
-comment. Not a blocker.
-
-**The ledger is posted as a comment on the pull request**, once the URL exists.
-It was a file in the session scratchpad until 0.6.0, which is a temp directory no
-reviewer can open, so a ledger written there was written to nobody and the body
-absorbed it instead: measured on 2026-08-17, the #588 run wrote a 12146-character
-ledger to the scratchpad and a 13589-character body, and the second was largely a
-retelling of the first. A comment is next to the diff, collapses on its own, and
-does not have to be read before deciding whether to review.
-
-The re-review after a fix round is **incremental**, which is what `--since`
-does: the lens receives the fix diff plus the list of findings it is verifying,
-each answered `ADDRESSED` or `NOT ADDRESSED`, plus new breakage inside the fix
-diff only. A full re-read is warranted only when the fix moved a contract, a
-signature, a route, a schema, an order of operations, and then only for the
-lenses that contract touches.
-
-Cap at `maxRounds`, and **at the cap every open finding gets a written
-decision**. Silent discard is prohibited. A round whose fix is larger than the
-original commit is not a round, it is the spec having been wrong: say so and
-stop.
+- **The browser half runs when all three hold**, and is skipped silently otherwise:
+  `browser.enabled` is true, the effort level is in `browser.efforts`, and
+  `kit screens` returned at least one route under `visit`. **Exactly one screen lens
+  at a time**, because the browser is shared and two of them corrupt each other's reads.
+- **You bring the app up, because the lens has no `Bash`.** A dispatch sent at a port
+  with nothing on it returns findings about a connection error, and a port answering
+  is not proof it is your build.
+- **The rubric travels in every dispatch**: Critical is data loss, security, money or
+  production; Important is anything that makes the task untrustworthy until fixed;
+  Minor never enters the loop and goes to the deferred ledger.
+- **CONFIRMED** goes back to stage 2 as the spec. **PLAUSIBLE** is one line in the
+  pull request body's points of attention, and blocks nothing.
+- **Cap at `maxRounds`, and at the cap every open finding gets a written decision.**
+  Silent discard is prohibited.
 
 ## Stage 5 · Ship
 
@@ -587,14 +428,10 @@ stop.
    the template, the tables, the checkboxes or the fenced blocks. Over budget it
    exits 3 and prints the sections by size.
 
-   Cut, do not compress. The body is the only thing a human reads before deciding
-   whether to review the diff, and everything worth keeping already has a better
-   home: the reasoning behind each finding goes in the ledger comment, a decision
-   about the product goes in the issue, and why a non-obvious line exists goes in
-   the code next to it. Measured on 2026-08-17: PR 590 carried 11902 characters
-   of prose across 9 sections, 7 of them over the 600 cap, on a change whose
-   source diff was 163 lines. Nine minutes of reading to reach a 163-line diff is
-   a body that competes with the diff instead of introducing it.
+   Cut, do not compress. Everything worth keeping has a better home: the reasoning
+   behind a finding goes in the ledger comment, a product decision goes in the issue,
+   and why a non-obvious line exists goes in the code next to it (`evidence.md`
+   &middot; *A body that competes with the diff*).
 
    What the body owes the reader, and nothing else: what changed and why, in the
    repo template's own sections; what to check; what is knowingly left out and
@@ -609,9 +446,8 @@ stop.
    collects what earlier tasks left in the same pass. It keeps anything it cannot
    prove finished, including a worktree sitting on the base tip with nothing of its
    own, because that is indistinguishable from one another session just created.
-   `rm <issue>` was here until 0.3.0 and could never succeed: step 3 opens the pull
-   request, and an open pull request used to mean KEEP, so every task leaked its
-   worktree. 27 of them and 35 GB when it was found.
+   `rm <issue>` was here until 0.3.0 and could never succeed against an open pull
+   request, so every task leaked its worktree (`evidence.md` &middot; *The worktree leak*).
 
 ## Stage 6 · Report
 
@@ -622,11 +458,9 @@ findings ledger comment, which is where a reader who wants it will look, and
 naming it as the overflow here is what pushed PR 590 to 11902 characters of prose
 while this report stayed under 600.
 
-The budget is in characters because "one line each" does not survive contact with
-a paragraph. Measured on 2026-08-17: a report that read as six items was 1655
-characters and 4 source lines, and rendered as 19 lines in the user's terminal.
-100 characters is about one rendered line, so six items at 600 characters is one
-sentence each.
+The budget is in characters because "one line each" does not survive contact with a
+paragraph: 100 characters is about one rendered line, so six items at 600 characters
+is one sentence each (`evidence.md` &middot; *Why the budget is in characters*).
 
 1. The pull request link, its draft state and base, and the issue it closes.
 2. What changed, in one sentence naming the class of defect, not each instance.
@@ -649,25 +483,9 @@ done without lines 3 and 4.
 
 ## Why the funnel has this shape
 
-Reconstructed by timestamp on a real 5h35 task, issue to merge:
-
-| Phase                                | Measured | Share |
-| ------------------------------------ | -------- | ----- |
-| human wait and merge                 | 2h44     | 49%   |
-| adversarial review, 3 rounds         | 1h28     | 26%   |
-| pre-flight, triage, spec, implement  | 47min    | 14%   |
-| test writer and coverage gate        | 20min    | 6%    |
-| ship: coverage again, pre-push, PR   | 14min    | 4%    |
-
-Half the clock was the human, and of the part the funnel controls, **every test
-and lint command together was 11%**. So nothing here trims a check: the levers
-are the number of rounds, what each dispatch reads, and not running the same
-gate twice. Anything in this document that trims a check is trimming the cheap
-thing.
-
-- You stay clean: subagents read code, you read conclusions. A loaded main
-  session pays for its whole history on every message.
-- Dispatches are self-contained, because the redo caused by a vague spec costs
-  more than the spec.
-- The funnel ends in a report, and the next task starts in a fresh session. One
-  task per session is the cheapest shape a session has.
+Reconstructed by timestamp on a real 5h35 task, half the clock was the human, and of
+the part the funnel controls **every test and lint command together was 11%**. So
+nothing here trims a check: the levers are the number of rounds, what each dispatch
+reads, and not running the same gate twice. Anything in this document that trims a
+check is trimming the cheap thing. The phase table is in `evidence.md`, under
+*Where the 5h35 went*.

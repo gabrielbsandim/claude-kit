@@ -13,6 +13,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILL = os.path.join(ROOT, "skills", "task", "SKILL.md")
+EVIDENCE = os.path.join(ROOT, "skills", "task", "evidence.md")
 TRIAGE = os.path.join(ROOT, "agents", "funnel-triage.md")
 
 failures = []
@@ -38,8 +39,10 @@ def flat(text):
 
 
 SKILL_RAW = open(SKILL, encoding="utf-8").read()
+EVIDENCE_RAW = open(EVIDENCE, encoding="utf-8").read()
 TRIAGE_RAW = open(TRIAGE, encoding="utf-8").read()
 skill = flat(SKILL_RAW)
+evidence = flat(EVIDENCE_RAW)
 triage = flat(TRIAGE_RAW)
 
 # 1. The routing question is at stage 0, ahead of the triage dispatch. Anywhere
@@ -111,8 +114,13 @@ check("6 doubt goes up", "Uncertainty goes up, never down" in routing, "the bias
 
 # 7. The floor is a measured number with its origin, not a vibe. 2.46 is what one
 #    real triage agent cost, and it is the reason the call is at stage 0 at all.
-check("7 the floor is quoted", "2.46" in routing, "the measured triage cost is gone")
-check("7 the floor has its unit", "9.4 minutes" in routing, "the wall clock half is gone")
+#    The number lives in evidence.md since the skill was split, and the skill has
+#    to keep pointing at it: a rule whose measurement nobody can reach is a rule
+#    the next reader deletes.
+check("7 the floor is quoted", "2.46" in evidence, "the measured triage cost is gone")
+check("7 the floor has its unit", "9.4 minutes" in evidence, "the wall clock half is gone")
+check("7 the skill still points at the floor", "The triage floor" in routing,
+      "the pointer from stage 0 to evidence.md is gone")
 
 # 8. Both files know the same verdict name. This is the pair that actually breaks
 #    at runtime: triage returns a token the orchestrator has no branch for, and the

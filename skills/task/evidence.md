@@ -1,0 +1,178 @@
+# task, the measurements behind the rules
+
+Every rule in `SKILL.md` that reads as arbitrary was a defect first. This file holds
+the measurement, so the rule can stay one sentence where the funnel is running and
+still be arguable when someone wants to change it. Section names match the pointers
+in `SKILL.md` and `review.md` exactly.
+
+Read it when you are about to disagree with a rule, when you are adapting the funnel
+to a repository it was not written against, or when a number in a report needs its
+source. Do not read it to run a task.
+
+## Stale kit
+
+The literal is the version this file shipped in, so the command is comparing the text
+you are reading against what is installed on the machine. Measured on 2026-08-17: a
+funnel run executed the 0.1.0 skill while a newer one existed upstream, so that task
+ran without a browser lens, without the report cap, and without two other rules that
+had already shipped, and nothing in its output said so.
+
+The cause was the **installed** copy being old, not the session holding an old one.
+A skill body is re-read at each invocation: the same unrestarted session loaded this
+file from 0.1.0 at 14:11, from 0.1.1 at 19:03 and from 0.3.1 at 23:16. So a STALE KIT
+is the case that actually bites here, and it is the one you can fix without stopping.
+
+## Orphan issues
+
+It ranks the open board by shared source files, identifiers and words, and it
+  prints the parent's existing children. Two distinctive files in common means it is
+  the same work: comment there, or deliver both in one pull request. Then, if you do
+  create it, **link it to a parent** with `addSubIssue`, or write in the issue why it
+  stands alone. Measured on 2026-08-17 in the repository this was built against:
+  eleven security issues in two days, nine of them correctly linked, and the only
+  two orphans were the two created as findings mid-task. An orphan is what turns an
+  epic with children into a flat list that reads as growing forever, which is what
+  the backlog felt like while the count was in fact flat at 18 open.
+
+## Prefix rewrite
+
+Compacting is cheap and a prefix rewrite is not, and the rewrite is not something
+  you choose. Measured across 16 sessions, 2026-08-11 to 2026-08-18, at
+  API-equivalent rates: US$ 2442 spent, **US$ 393 of it, 16%, on requests that read
+  almost nothing from cache and wrote a whole prefix back**, at US$ 2.62 each
+  against US$ 0.20 for a normal request. So the value of compacting is not the
+  cheaper reads afterwards, it is that the rewrite which happens anyway is smaller.
+
+## A pause is the expensive moment
+
+The end of a unit of work is the trigger; the percentage is only how urgent the
+  next boundary is. Compacting mid-task trades a dollar for file re-reads that cost
+  more and come back worse. One case ignores the percentage: **before a long pause.**
+  In the session measured on Bedrock, 116 of 152 prefix rewrites followed a gap of 5
+  to 60 minutes, at a median of 301,026 tokens and US$ 1.89 each, because that route
+  was not getting the one-hour cache TTL. A pause with a large prefix is the only
+  place one request costs five dollars.
+
+## The triage floor
+
+- **Which lane.** Answered here, before the triage dispatch, because triage is
+  already the floor: measured on the 2026-08-17 run of one issue, the triage agent
+  alone cost 9.4 minutes and about US$ 2.46 of the run's US$ 33, so a "this was
+  too small" answer coming out of triage pays the floor before saying the floor
+  was not worth paying.
+
+## One browser, one tab
+
+**Exactly one screen lens at a time, and this was measured rather than assumed.**
+The behaviour half and the interface half were two agents until two of them were
+run concurrently against this MCP server: one agent's `browser_evaluate` read the
+*other* agent's page in three rounds out of four, and matched only after the other
+stopped navigating. One server, one browser, one tab, no per-caller isolation. So
+the two halves are numbered parts of one dispatch, which also means each route is
+visited once instead of twice.
+
+## Two things that look parallel
+
+- **Two vitest runs in one working tree.** Not a theory: in the repository this
+  was built against, `src/tests/setup-dom.test.ts` writes a config file into the
+  working directory under a fixed name and deletes it in `afterAll`, and any
+  coverage run `rm -rf`s its own report directory at startup. Either one makes the
+  other run fail for a reason that has nothing to do with the change. That is what
+  `exclusive` is for, and it is why `gateJobs` defaults to 1.
+- **The browser lane next to a heavy gate, on a small machine.** Measured on the
+  box this was written on: 6 cores, 5.9 GB of RAM with about 3 GB free, a dev
+  script that asks for an 8 GB V8 heap ceiling, vitest pinned to 4 workers, and
+  Chromium on top. Overlapping the browser with lint and types is free.
+  Overlapping it with the suite is how a gate fails for memory and gets read as a
+  flake. Check the machine before assuming the lane is free.
+
+## What concurrency is worth
+
+What this is worth, measured on the repository this was built against: the `ship`
+stage runs in **268.7s** where the same four gates in series cost 423.5s. Note
+where that came from, because it decides where to look next: 142.5s of it was a
+duplicated suite run that concurrency would have hidden rather than fixed, and
+only 13s was the overlap. Removing work beats overlapping it.
+
+## The two lenses
+
+Both were the human reviewer's finding number one on the first two pull requests
+this funnel delivered, and none of the code lenses had reached them.
+
+**`failure-edges`**. Walk every new I/O call and answer, per call: is there a
+`catch`, is there a timeout, does the failure leave a log, and what is lost if it
+throws here. One shipped pull request had a fetch with neither `catch` nor
+timeout, so a network failure became a raw 500 instead of the route's own 502
+contract. Another shipped a paid call with no `catch` on a webhook that answers
+200 to everything: a throw after the charge lost the cost silently, with no retry
+behind it.
+
+**`claims`**. Every sentence this change writes **or leaves standing** is
+re-read against the code as committed. The other lenses verify what the pull
+request body asserts, and verify it well. What gets through is the prose the
+change **falsified**: a comment still calling 16 MB the ceiling after the change
+introduced a 1 MB one, a runbook naming a guard at a step the code no longer runs
+it at, a help entry promising an answer a new cap refuses. `kit review` hands
+this lens a **grep-precomputed candidate list** instead of two 15 KB files to
+read, built from the declaration names and multi-digit literals the diff touched.
+Candidates, not findings: each is verified against the code.
+
+## Why the ledger is a comment
+
+**The ledger is posted as a comment on the pull request**, once the URL exists.
+It was a file in the session scratchpad until 0.6.0, which is a temp directory no
+reviewer can open, so a ledger written there was written to nobody and the body
+absorbed it instead: measured on 2026-08-17, the #588 run wrote a 12146-character
+ledger to the scratchpad and a 13589-character body, and the second was largely a
+retelling of the first. A comment is next to the diff, collapses on its own, and
+does not have to be read before deciding whether to review.
+
+## Where the 5h35 went
+
+Reconstructed by timestamp on a real 5h35 task, issue to merge:
+
+| Phase                                | Measured | Share |
+| ------------------------------------ | -------- | ----- |
+| human wait and merge                 | 2h44     | 49%   |
+| adversarial review, 3 rounds         | 1h28     | 26%   |
+| pre-flight, triage, spec, implement  | 47min    | 14%   |
+| test writer and coverage gate        | 20min    | 6%    |
+| ship: coverage again, pre-push, PR   | 14min    | 4%    |
+
+Half the clock was the human, and of the part the funnel controls, **every test
+and lint command together was 11%**. So nothing here trims a check: the levers
+are the number of rounds, what each dispatch reads, and not running the same
+gate twice. Anything in this document that trims a check is trimming the cheap
+thing.
+
+- You stay clean: subagents read code, you read conclusions. A loaded main
+  session pays for its whole history on every message.
+- Dispatches are self-contained, because the redo caused by a vague spec costs
+  more than the spec.
+- The funnel ends in a report, and the next task starts in a fresh session. One
+  task per session is the cheapest shape a session has.
+
+## A body that competes with the diff
+
+Cut, do not compress. The body is the only thing a human reads before deciding
+   whether to review the diff, and everything worth keeping already has a better
+   home: the reasoning behind each finding goes in the ledger comment, a decision
+   about the product goes in the issue, and why a non-obvious line exists goes in
+   the code next to it. Measured on 2026-08-17: PR 590 carried 11902 characters
+   of prose across 9 sections, 7 of them over the 600 cap, on a change whose
+   source diff was 163 lines. Nine minutes of reading to reach a 163-line diff is
+   a body that competes with the diff instead of introducing it.
+
+## The worktree leak
+
+`rm <issue>` was here until 0.3.0 and could never succeed: step 3 opens the pull
+   request, and an open pull request used to mean KEEP, so every task leaked its
+   worktree. 27 of them and 35 GB when it was found.
+
+## Why the budget is in characters
+
+The budget is in characters because "one line each" does not survive contact with
+a paragraph. Measured on 2026-08-17: a report that read as six items was 1655
+characters and 4 source lines, and rendered as 19 lines in the user's terminal.
+100 characters is about one rendered line, so six items at 600 characters is one
+sentence each.
