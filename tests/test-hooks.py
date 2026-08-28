@@ -56,7 +56,6 @@ for cmd, want in [
     ("cat .env", BLOCK),
     ("grep SECRET .env.local", BLOCK),
     ("source .env.prod", BLOCK),
-    ("cp .env /tmp/x", BLOCK),
     ("head -5 .env.wa", BLOCK),
     # Agent config holds an env block per MCP server, so it leaks the same way.
     ("cat ~/.claude.json", BLOCK),
@@ -69,6 +68,15 @@ for cmd, want in [
     ("node --env-file=.env script.js", PASS),
     ("grep -c KEY .env", PASS),
     ("vercel env pull .env.local", PASS),
+    # Moving a file prints nothing, so it never was this guard's business. The case
+    # that paid for it: an untracked .env.lens has to reach a fresh worktree before
+    # the browser lens can start the app.
+    ("cp .env /tmp/x", PASS),
+    ("cp /home/x/repo/.env.lens /home/x/repo-858/", PASS),
+    ("mv .env.local .env.bak", PASS),
+    # But a copy in one clause does not license a read in the next.
+    ("cp .env /tmp/x && cat .env", BLOCK),
+    ("cp .env /tmp/x; grep KEY .env", BLOCK),
     ("echo $DATABASE_URL", PASS),
     ('node -e "console.log(process.env.PORT)"', PASS),
     ("python3 -c 'import os; os.environ[\"X\"]'", PASS),

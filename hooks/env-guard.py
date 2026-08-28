@@ -32,8 +32,16 @@ import sys
 # and surfaced the hour `.claude.json` joined the list.
 READERS = (
     r"(?<![\w.-])(cat|bat|less|more|head|tail|nl|od|xxd|strings|grep|rg|egrep|fgrep|awk|sed|cut"
-    r"|sort|uniq|tee|cp|mv|base64|jq|yq|printenv|env)(?![\w-])"
+    r"|sort|uniq|tee|base64|jq|yq|printenv|env)(?![\w-])"
 )
+# `cp` and `mv` were in that list until 0.9.10 and are deliberately not. This guard
+# exists for one property, stated in the docstring: contents do not enter context.
+# A copy prints nothing, so blocking it bought no confidentiality and cost the
+# ordinary case, which is moving an untracked `.env.lens` into a fresh worktree so
+# the browser lens can start. That blocked, the lens never ran, and the review
+# shipped without the half that opens the screen. Secret sprawl on disk is a real
+# risk and is a different one: it belongs to a rule about where a file may land,
+# not to a rule about what reaches the transcript.
 # .env, .env.local, .env.prod, but never .env.example / .sample / .template / .dist.
 DOTENV = r"(?<![\w.])\.env(?![\w-]*\.?(example|sample|template|dist))(\.[A-Za-z0-9_-]+)?\b"
 # Agent config that carries an inline `env` block per MCP server.
