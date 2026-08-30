@@ -37,8 +37,9 @@ ADVICE = {
         "still need costs more in file re-reads than the compaction saves."
     ),
     "NOW": (
-        "Compact now, even mid-task. A prefix rewrite at this size is a single "
-        "request costing several dollars, and nothing you do decides when it happens."
+        "Compact at the very next boundary, and take one if none is close. Every turn "
+        "from here re-reads the whole prefix, so the compaction repays itself within a "
+        "few turns, but a compaction dropped into the middle of a task still costs a redo."
     ),
     "LATE": (
         "Compact immediately. Past this the automatic compaction fires and picks the "

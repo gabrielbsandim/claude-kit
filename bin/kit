@@ -12,6 +12,7 @@
 #   kit issues orphans         open issues that are neither an epic nor a child
 #   kit issues tree <n>        an epic and its children, with state
 #   kit pr-body <file>         how much prose the pull request body adds
+#   kit ledger <file>          the same, on the tighter budget a comment gets
 #   kit context                how full the context is, and whether to compact
 #   kit usage                  what the main loop spent, and what the agents spent
 #   kit doctor                 is this machine ready
@@ -46,6 +47,9 @@ case "$cmd" in
   gate)     exec "$KIT_BIN/gate" "$@" ;;
   issues)   exec "$KIT_BIN/issues" "$@" ;;
   pr-body)  exec "$KIT_BIN/pr-body" "$@" ;;
+  # The same measurement, on the budget a comment gets. Flags after "$@" would win
+  # over the caller's, so these go first.
+  ledger)   exec "$KIT_BIN/pr-body" --max 1000 --section-max 350 "$@" ;;
   context)  exec "$KIT_BIN/context" "$@" ;;
   usage)    exec "$KIT_BIN/usage" "$@" ;;
   worktree) exec "$KIT_BIN/worktree" "$@" ;;

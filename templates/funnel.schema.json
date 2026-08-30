@@ -206,6 +206,24 @@
         }
       }
     },
+    "reviewModel": {
+      "type": "object",
+      "description": "Per effort level, the model a review dispatch must be given, overriding the reviewer agent's own frontmatter. Omit it and nothing is passed, which is the normal case: the agent's frontmatter is what binds. Present only so a level whose subject matter is auth, tenancy, billing or a migration can buy a stronger reader without every other level paying for it.",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "properties": {
+        "light": {
+          "type": "string"
+        },
+        "standard": {
+          "type": "string"
+        },
+        "deep": {
+          "type": "string"
+        }
+      }
+    },
     "maxRounds": {
       "type": "integer",
       "minimum": 1,

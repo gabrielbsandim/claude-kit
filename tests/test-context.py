@@ -74,7 +74,7 @@ try:
     # 1. The four bands, each from the size of the last request's context. `used`
     #    is read + write on that request, because that is what the next one has to
     #    carry and what a rewrite would be charged on.
-    for read, want in ((100_000, "HOLD"), (500_000, "AT THE NEXT BOUNDARY"),
+    for read, want in ((100_000, "HOLD"), (200_000, "AT THE NEXT BOUNDARY"),
                        (700_000, "NOW"), (950_000, "LATE")):
         transcript(cfg, "-p", "s" + str(read), [usage(read=read)])
         out, rc = run(cfg, "--session", "s" + str(read))
@@ -82,25 +82,29 @@ try:
               f"rc={rc} out={out!r}")
 
     # 1b. The boundaries themselves, so an off-by-one in the comparison shows up.
-    #     600_000 leaves exactly 40% free, which is below the 60 floor and above 35.
-    transcript(cfg, "-p", "edge", [usage(read=600_000)])
+    #     A floor belongs to the side that acts: the comparison is `used > floor`,
+    #     so exactly 300_000 is still the middle band and one token more is NOW.
+    transcript(cfg, "-p", "edge", [usage(read=300_001)])
     out, _ = run(cfg, "--session", "edge")
-    check("1b exactly 40% free is the middle band", out.startswith("AT THE NEXT BOUNDARY"), out)
-    # 60% exactly is the middle band, not HOLD: the rule reads "above 60%, hold",
-    # so the boundary belongs to the side that acts. The first version of this case
-    # asserted the opposite and the code was right.
-    transcript(cfg, "-p", "edge2", [usage(read=400_000)])
+    check("1b one token over 300k is NOW", out.startswith("NOW"), out)
+    transcript(cfg, "-p", "edge2", [usage(read=300_000)])
     out, _ = run(cfg, "--session", "edge2")
-    check("1b exactly 60% free already acts", out.startswith("AT THE NEXT BOUNDARY"), out)
-    # 390_000 leaves 61% free. Not 399_000: the percentage is rounded, so 399_000
-    # reports as 60 and lands in the band below. The rounding makes the boundary
-    # fuzzy by about 5000 tokens, which is fine for a verdict and worth knowing.
-    transcript(cfg, "-p", "edge3", [usage(read=390_000)])
+    check("1b exactly 300k is the middle band", out.startswith("AT THE NEXT BOUNDARY"), out)
+    transcript(cfg, "-p", "edge3", [usage(read=120_000)])
     out, _ = run(cfg, "--session", "edge3")
-    check("1b above 60% free is HOLD", out.startswith("HOLD"), out)
-    transcript(cfg, "-p", "edge4", [usage(read=399_000)])
+    check("1b exactly 120k is HOLD", out.startswith("HOLD"), out)
+    transcript(cfg, "-p", "edge3b", [usage(read=120_001)])
+    out, _ = run(cfg, "--session", "edge3b")
+    check("1b one token over 120k already acts", out.startswith("AT THE NEXT BOUNDARY"), out)
+    # LATE is the one band still measured against the window, and it wins over the
+    # token bands: 850_000 of 1M is 15% free, which is where the automatic
+    # compaction takes the cut point away from you whatever the prefix is.
+    transcript(cfg, "-p", "edge4", [usage(read=850_000)])
     out, _ = run(cfg, "--session", "edge4")
-    check("1b the percentage is rounded, not floored", "60% of the window free" in out, out)
+    check("1b 15% free is LATE, not NOW", out.startswith("LATE"), out)
+    transcript(cfg, "-p", "edge5", [usage(read=840_000)])
+    out, _ = run(cfg, "--session", "edge5")
+    check("1b 16% free is still NOW", out.startswith("NOW"), out)
 
     # 2. `used` counts the write half too. A request that wrote 400k and read
     #    nothing is a session with 400k of context, not an empty one, and reading
@@ -186,8 +190,12 @@ try:
     # arithmetic done by hand against a table the script already encodes.
     out, _ = run(cfg, "--session", "haiku", "--window", "200000")
     check("9 --window changes the band", out.startswith("LATE"), out)
+    # The same 180k on a 1M window is no longer LATE, because LATE is the only band
+    # still measured against the window. The other three are token counts since
+    # 0.10.0, so 180k reads the same everywhere it is not about to be auto-compacted.
     out, _ = run(cfg, "--session", "haiku")
-    check("9 the same session is HOLD at 1M", out.startswith("HOLD"), out)
+    check("9 the same session is AT THE NEXT BOUNDARY at 1M",
+          out.startswith("AT THE NEXT BOUNDARY"), out)
     # 9b. The environment sets it too, so a repo on Haiku does not need the flag on
     #     every call. Only the flag was covered, and a mutant that dropped the env
     #     default survived.
@@ -203,9 +211,13 @@ try:
     #     than only the raw numbers.
     out, rc = run(cfg, "--session", "haiku", "--json")
     data = json.loads(out)
-    check("10 json carries the verdict", data.get("verdict") == "HOLD", out)
-    for key in ("used", "free_pct", "requests", "rewrites", "spent", "one_rewrite_now"):
+    check("10 json carries the verdict", data.get("verdict") == "AT THE NEXT BOUNDARY", out)
+    for key in ("used", "free_pct", "requests", "rewrites", "spent", "one_rewrite_now",
+                "payback_turns"):
         check(f"10 json has {key!r}", key in data, out)
+    # The payback is what makes a band an argument instead of a preference, so it is
+    # part of the parsed shape and not only of the printed one.
+    check("10 payback is a number of turns", isinstance(data.get("payback_turns"), (int, float)), out)
 
     # 11. The pause rule is unconditional, so it is printed in every human answer
     #     rather than only in the urgent bands. It is the one that pays most.
@@ -223,8 +235,17 @@ try:
     src = open(CTX, encoding="utf-8").read()
     check("12 the bands in the script are the documented four",
           all(v in src for v in ("HOLD", "AT THE NEXT BOUNDARY", "NOW", "LATE")), "a band was renamed")
-    check("12 the floors are 60, 35 and 15", "(60," in src and "(35," in src and "(15," in src,
-          "a floor moved without the skills")
+    # Since 0.10.0 the three routine bands are token counts and only LATE is still a
+    # share of the window. A floor that moves without the skills moving is the drift
+    # this check exists for, whatever unit the floor is in.
+    check("12 the routine floors are 300k and 120k tokens",
+          "(300_000," in src and "(120_000," in src, "a floor moved without the skills")
+    check("12 LATE is still the one percentage", "LATE_FREE_PCT = 15" in src,
+          "the automatic compaction fires against the window, not against a token count")
+    for skill in ("skills/task/SKILL.md",):
+        text = open(os.path.join(ROOT, skill), encoding="utf-8").read()
+        check(f"12 {skill} quotes the token floors", "120k" in text and "300k" in text,
+              "the skill still describes the old percentage bands")
 finally:
     shutil.rmtree(root, ignore_errors=True)
 

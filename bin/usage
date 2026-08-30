@@ -2,6 +2,7 @@
 """Where a session's tokens went: the main loop, or the agents it dispatched.
 
     kit usage [--session ID] [--project DIR] [--all] [--json]
+              [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--by-stage]
 
 `ccusage` answers what a day cost and which model spent it. What it does not
 answer, and what decides whether a stage is worth its model, is the split between
@@ -15,9 +16,21 @@ Measured across every transcript on the machine this was written on, 2026-08-23:
 dispatches five agents, so that is the number that says what a stage costs before
 you decide which model it should run.
 
+`--since` and `--until` cut on each request's own day rather than on the file's, so
+a session that spans a release does not land wholly on one side of it. `--by-stage`
+splits the subagent lane by funnel stage and prints the cost per execution beside
+the total, which is the pair that says whether a stage is worth the model it runs.
+Together they answer "did the change to the funnel pay", which was a hand-written
+script until 0.10.0:
+
+    kit usage --all --since 2026-08-04 --until 2026-08-16 --by-stage
+    kit usage --all --since 2026-08-17 --until 2026-08-29 --by-stage
+
 The rates and the request de-duplication come from `bin/context`, imported rather
 than copied, because a second copy of a rule is the defect this plugin shipped in
-`no-em-dash` until 0.9.2.
+`no-em-dash` until 0.9.2. Those rates became per-model in 0.10.0: a single Opus rate
+was close enough while every agent inherited the main loop's model, and it stopped
+being close enough when the test writer and the reviewer moved to Sonnet.
 """
 
 import argparse
@@ -26,6 +39,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import sys
 
 
@@ -42,24 +56,117 @@ def load_context():
 CTX = load_context()
 
 
-def totals(paths):
+def blank():
+    return {"input": 0, "output": 0, "cache_write": 0, "cache_read": 0,
+            "requests": 0, "cost": 0.0}
+
+
+def add(out, usage):
+    out["requests"] += 1
+    out["input"] += usage.get("input_tokens", 0)
+    out["output"] += usage.get("output_tokens", 0)
+    out["cache_write"] += usage.get("cache_creation_input_tokens", 0)
+    out["cache_read"] += usage.get("cache_read_input_tokens", 0)
+    # Priced per request rather than on the summed totals, because the sum spans
+    # models: since 0.10.0 the test writer and the reviewer run Sonnet while the
+    # implementer and the triage inherit Opus, and one rate over the lot reports a
+    # Sonnet stage at about 2.5 times what it cost.
+    out["cost"] += CTX.cost(usage)
+    return out
+
+
+def finish(out):
+    out["tokens"] = out["input"] + out["output"] + out["cache_write"] + out["cache_read"]
+    return out
+
+
+def in_window(usage, since, until):
+    """Filter by the request's own day, not by the file's.
+
+    A session that spans a release is the ordinary case here, so a whole-file filter
+    would put every request of it on one side of the boundary.
+    """
+    if not (since or until):
+        return True
+    day = (usage.get("_ts") or "")[:10]
+    if not day:
+        return False
+    return (not since or day >= since) and (not until or day <= until)
+
+
+def totals(paths, since=None, until=None):
     """Summed usage over a set of transcripts, deduplicated the way context does."""
-    out = {"input": 0, "output": 0, "cache_write": 0, "cache_read": 0, "requests": 0}
+    out = blank()
     for path in paths:
         for usage in CTX.read_usage(path):
-            out["requests"] += 1
-            out["input"] += usage.get("input_tokens", 0)
-            out["output"] += usage.get("output_tokens", 0)
-            out["cache_write"] += usage.get("cache_creation_input_tokens", 0)
-            out["cache_read"] += usage.get("cache_read_input_tokens", 0)
-    out["tokens"] = out["input"] + out["output"] + out["cache_write"] + out["cache_read"]
-    out["cost"] = CTX.cost({
-        "input_tokens": out["input"],
-        "output_tokens": out["output"],
-        "cache_creation_input_tokens": out["cache_write"],
-        "cache_read_input_tokens": out["cache_read"],
-    })
-    return out
+            if in_window(usage, since, until):
+                add(out, usage)
+    return finish(out)
+
+
+# The stage a subagent transcript belongs to, read from the opening of the first
+# user message, which is the dispatch prompt verbatim. Not from the file name or a
+# field: the harness names these after an opaque agent id and records no agent type.
+#
+# So this is a heuristic, and `other` is a real bucket rather than a rounding error:
+# a dispatch written before the stage names settled, or written in the wrong
+# language, lands there. Read it as "how much went to agents this cannot name", and
+# a large one is worth opening rather than dividing away. Order matters, because a
+# screen lens prompt names stage 4 too.
+STAGES = (
+    ("screen lens", "4 screen-lens"),
+    ("screen-lens", "4 screen-lens"),
+    ("stage 4", "4 reviewer"),
+    ("adversarial review", "4 reviewer"),
+    ("revisao adversarial", "4 reviewer"),
+    ("stage 3", "3 test-writer"),
+    ("test writer", "3 test-writer"),
+    ("stage 2", "2 implementer"),
+    ("stage 1", "1 triage"),
+    ("triage and spec", "1 triage"),
+)
+HEAD_CHARS = 1500
+
+
+def stage_of(path):
+    try:
+        with open(path, errors="ignore") as handle:
+            for line in handle:
+                row = json.loads(line) if line.strip() else {}
+                if row.get("type") != "user":
+                    continue
+                content = row.get("message", {}).get("content")
+                text = content if isinstance(content, str) else json.dumps(content)
+                head = text[:HEAD_CHARS].lower()
+                for needle, name in STAGES:
+                    if needle in head:
+                        return name
+                return "other"
+    except (OSError, ValueError):
+        pass
+    return "other"
+
+
+def by_stage(sub_files, since=None, until=None):
+    """Per funnel stage: what it spent, and how many times it ran.
+
+    The count is transcripts, which is executions: one dispatch, one transcript. It
+    is the number the fan-out rules are written against, and the per-execution cost
+    beside it is what says whether a stage is worth the model it runs.
+    """
+    out = {}
+    for path in sub_files:
+        name = stage_of(path)
+        row = out.setdefault(name, blank())
+        row.setdefault("runs", 0)
+        counted = False
+        for usage in CTX.read_usage(path):
+            if in_window(usage, since, until):
+                add(row, usage)
+                counted = True
+        if counted:
+            row["runs"] += 1
+    return {k: finish(v) for k, v in out.items() if v["requests"]}
 
 
 def lanes(main_files):
@@ -92,12 +199,19 @@ def main(argv):
     ap.add_argument("--session")
     ap.add_argument("--project")
     ap.add_argument("--all", action="store_true")
+    ap.add_argument("--since", metavar="YYYY-MM-DD")
+    ap.add_argument("--until", metavar="YYYY-MM-DD")
+    ap.add_argument("--by-stage", action="store_true")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("-h", "--help", action="store_true")
     args = ap.parse_args(argv)
     if args.help:
         print(__doc__.strip())
         return 0
+    for flag, value in (("--since", args.since), ("--until", args.until)):
+        if value and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            print("%s takes YYYY-MM-DD, got %r" % (flag, value), file=sys.stderr)
+            return 2
 
     cfg = os.environ.get("CLAUDE_CONFIG_DIR", os.path.expanduser("~/.claude"))
     main_files, scope = resolve(cfg, args)
@@ -106,14 +220,21 @@ def main(argv):
         return 1
 
     main_files, sub_files = lanes(main_files)
-    m, s = totals(main_files), totals(sub_files)
+    m = totals(main_files, args.since, args.until)
+    s = totals(sub_files, args.since, args.until)
     total_tokens = m["tokens"] + s["tokens"]
     share = 100.0 * s["tokens"] / total_tokens if total_tokens else 0.0
+    stages = by_stage(sub_files, args.since, args.until) if args.by_stage else None
+    if args.since or args.until:
+        scope += ", %s to %s" % (args.since or "the beginning", args.until or "today")
 
     if args.json:
-        json.dump({"scope": scope, "main": m, "subagents": s,
+        payload = {"scope": scope, "main": m, "subagents": s,
                    "subagent_share_pct": round(share, 1),
-                   "subagent_transcripts": len(sub_files)}, sys.stdout, indent=2)
+                   "subagent_transcripts": len(sub_files)}
+        if stages is not None:
+            payload["stages"] = stages
+        json.dump(payload, sys.stdout, indent=2)
         print()
         return 0
 
@@ -123,6 +244,12 @@ def main(argv):
     print("%-11s %13d %12d %10.2f  (%d transcripts)"
           % ("subagents", s["tokens"], s["requests"], s["cost"], len(sub_files)))
     print("subagents are %.1f%% of the tokens" % share)
+    if stages:
+        print("\n%-16s %6s %10s %10s" % ("stage", "runs", "US$", "US$/run"))
+        for name in sorted(stages, key=lambda k: -stages[k]["cost"]):
+            row = stages[name]
+            per = row["cost"] / row["runs"] if row["runs"] else 0.0
+            print("%-16s %6d %10.2f %10.2f" % (name, row["runs"], row["cost"], per))
     print("\nList price, not what a subscription charges. The split is the number to"
           "\nread: it is what a stage costs before you decide which model it runs.")
     return 0

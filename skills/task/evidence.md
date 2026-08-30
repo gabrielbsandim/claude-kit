@@ -43,6 +43,32 @@ Compacting is cheap and a prefix rewrite is not, and the rewrite is not somethin
   against US$ 0.20 for a normal request. So the value of compacting is not the
   cheaper reads afterwards, it is that the rewrite which happens anyway is smaller.
 
+## Why the bands are token counts
+
+Until 0.10.0 the four bands were percentages of the context window. Measured
+2026-08-29 over 988 transcripts and 87,306 messages, the median session peaked at
+**260,253 tokens** of context, the p90 at 506,574 and the largest at 654,359.
+Against a 1M window those are 74%, 49% and 35% free, so a rule whose first floor
+was "above 60% free, hold" answered HOLD or AT THE NEXT BOUNDARY for essentially
+every session ever run, and HOLD is the one verdict nobody can act on.
+
+The unit was the defect, not the floors. A 300k prefix costs the same to re-read on
+a 200k window as on a 1M one, so what makes a threshold arguable is payback, not
+proportion. A turn re-reads its prefix at US$ 0.50 per million. One compaction was
+measured at **US$ 0.4389 for the turn that follows it against US$ 0.1346 for a
+normal one**, across 35,583 main-loop turns, so about US$ 0.30 extra, and it resets
+the prefix to roughly 40k. Compacting at P therefore repays itself in
+`0.30 / ((P - 40_000) x 0.5e-6)` turns: about 8 at 120k, about 3 at 250k, under 2 at
+400k. Sessions run into the hundreds of turns.
+
+So the floors moved to 120k and 300k, `kit context` prints the payback for the size
+you are actually at, and LATE stayed a percentage because what LATE describes is the
+automatic compaction, which fires against the window rather than against a prefix.
+
+What did not change is the trigger. The whole measured cost of compaction is
+US$ 63.03 across 141 of them, about 1% of the period's bill, so compacting is not
+what a quota goes on. A redo is. NOW means the next boundary you reach.
+
 ## A pause is the expensive moment
 
 The end of a unit of work is the trigger; the percentage is only how urgent the
@@ -126,6 +152,68 @@ absorbed it instead: measured on 2026-08-17, the #588 run wrote a 12146-characte
 ledger to the scratchpad and a 13589-character body, and the second was largely a
 retelling of the first. A comment is next to the diff, collapses on its own, and
 does not have to be read before deciding whether to review.
+
+## Why the ledger has a budget
+
+Then the body had a budget and the ledger did not, so the overflow moved into the
+ledger the same way it had moved into the body. Measured 2026-08-29 with
+`kit pr-body --max 999999`, the first ledger comment on pull requests 874, 877 and
+880 carried **4515, 4432 and 3734 characters of prose**, in front of bodies of 1876
+to 2837 characters that the 2000 budget had already disciplined. The follow-up
+comment answering the review on 880 was another 3419.
+
+So `kit ledger` is `kit pr-body` at 1000 and 350, half the body's, because the
+ledger is the second thing read and only by somebody who has already decided to
+review. The budget is reachable rather than merely small because a table row costs
+no prose at all under the same counting rules: twelve findings in rows measure 55
+characters, and the same twelve as paragraphs measure past 3000. That is what makes
+the shape a table with a few sentences under it, rather than a shorter essay.
+
+## An empty slice on a fix round
+
+A reviewer sent at a diff with nothing in it still pays a full cold context to
+report that there is nothing to report. Until 0.10.0 `kit review <level> --since
+<sha>` wrote every slice for the fix range and printed a dispatch for each one
+regardless of whether the fix had touched it, so a fix confined to `src` re-sent the
+tests and surfaces lenses every round.
+
+The scale it operates at is the fan-out itself: over thirteen days the reviewer ran
+**310 times for about 40 tasks**, roughly 8 per task against a plan that prints 3 on
+`standard` and 4 on `deep`, so most of the excess is fix rounds. `--since` now prints
+`skipped` and names the slice, and that line is the whole instruction.
+
+The first round never skips. There an empty slice is a fact worth having stated, and
+a reviewer's silence is not the same statement as a reviewer's absence.
+
+The same round has one other rule with the same shape: **one implementer per round,
+carrying every CONFIRMED finding of that round**, not one per finding. The
+implementer ran 101 times for about 40 tasks on a funnel whose `maxRounds` is 2. A
+second implementer on the same branch reads the same repository from an empty
+context to fix a second line in a file the first one already had open, and the fix
+is not a judgement anybody wanted a fresh opinion on.
+
+## The model of a dispatch
+
+An agent declares its model in its own frontmatter, and a `model` field in the Agent
+input silently overrides it, with nothing in the transcript marking that it did.
+Measured over the first thirteen days of funnel use, **101 of 625 funnel dispatches
+carried `model: "opus"` written by the orchestrator**: 57 reviewers, 23
+implementers, 10 test writers, 8 triages and 3 screen lenses.
+
+The test writer is the one where the override is visible in the bill, because its
+frontmatter has said `sonnet` since 0.9.0: its Opus executions cost **US$ 10.87
+each against US$ 3.03** on Sonnet, 3.6 times, for the stage with the narrowest input
+in the funnel. So the rule is that the model is never written into a dispatch, and
+`tests/check-frontmatter.py` holds the table in `SKILL.md` to what the frontmatter
+actually says, because two places holding one value is the drift that produced this.
+
+Which stages sit where is the same argument in the other direction. Over the same
+thirteen days the reviewer ran **310 times at US$ 2.16 each**, the test writer 81
+times, the implementer 101 and the triage 59. The two stages on Sonnet are the two
+whose input is already scoped for them: the reviewer is handed a diff file that is
+already written plus an exact document list, and the test writer is handed the spec
+and the list of files that changed. The two left on `inherit` are the two that read
+an open codebase in order to decide something.
 
 ## Where the 5h35 went
 

@@ -83,13 +83,13 @@ try:
     check("1 HOLD says nothing", rc == 0 and out.strip() == "", f"rc={rc} out={out!r}")
 
     # 2. The middle band speaks, once, with the number and the price.
-    transcript(cfg, "-p", "mid22222", [usage(read=500_000)])
+    transcript(cfg, "-p", "mid22222", [usage(read=200_000)])
     out, rc = fire(cfg, "mid22222")
     msg = said(out)
     check("2 the middle band speaks", rc == 0 and msg, f"rc={rc} out={out!r}")
     check("2 it names the verdict", "AT THE NEXT BOUNDARY" in (msg or ""), msg)
-    check("2 it carries the percentage", "50% of the window is free" in (msg or ""), msg)
-    check("2 it prices the rewrite", "US$ 3.12" in (msg or ""), msg)
+    check("2 it carries the percentage", "80% of the window is free" in (msg or ""), msg)
+    check("2 it prices the rewrite", "US$ 1.25" in (msg or ""), msg)
     check("2 it says not to compact mid-task", "not mid-task" in (msg or ""), msg)
     check("2 it says the model cannot compact", "cannot" in (msg or ""), msg)
     check("2 it keeps the pause rule", "long pause" in (msg or ""), msg)
@@ -124,7 +124,7 @@ try:
 
     # 5c. Every band's advice exists. Reaching a band with no entry raised a KeyError
     #     that the blanket catch turned into silence, so this walks all four.
-    for size, want in ((100_000, None), (500_000, "AT THE NEXT BOUNDARY"),
+    for size, want in ((100_000, None), (200_000, "AT THE NEXT BOUNDARY"),
                        (700_000, "NOW"), (950_000, "LATE")):
         sess = "walk%04d" % (size // 1000)
         transcript(cfg, "-p", sess, [usage(read=size)])
@@ -156,7 +156,8 @@ try:
     # 8. The window is overridable, so a Haiku session is not reported as empty.
     transcript(cfg, "-p", "haiku444", [usage(read=180_000)])
     out, _ = fire(cfg, "haiku444")
-    check("8 180k is HOLD at 1M", out.strip() == "", out)
+    check("8 180k is AT THE NEXT BOUNDARY at 1M",
+          "AT THE NEXT BOUNDARY" in (said(out) or ""), out)
     out, _ = fire(cfg, "haiku444", extra_env={"KIT_NUDGE_WINDOW": "200000"})
     check("8 and LATE at 200k", "LATE" in (said(out) or ""), out)
 

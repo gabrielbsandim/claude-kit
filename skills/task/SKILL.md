@@ -40,7 +40,7 @@ slice.
 ## Before stage 1: is this skill the one that shipped
 
 ```
-kit version 0.9.10
+kit version 0.10.0
 ```
 
 The literal is the version this file shipped in, so the command compares the text you
@@ -69,6 +69,15 @@ it is the one you can fix without stopping (`evidence.md` &middot; *Stale kit*).
   inside the task funnel; do not invoke the task or investigate skills
   yourself_. A dispatch that leans on "as discussed" produces a guess, then a
   redo, which is the most expensive token there is.
+- **The model of a dispatch is not yours to choose.** Every agent declares its
+  model in its own frontmatter, and a `model` field in the Agent input silently
+  overrides it. Measured over the first thirteen days of funnel use: **101 of 625
+  dispatches carried `model: "opus"` written by the orchestrator**, ten of them to
+  the test writer, whose frontmatter says `sonnet` and whose Opus executions cost
+  US$ 10.87 each against US$ 3.03 on Sonnet. So: never write a `model` field into
+  a dispatch. The only exception is a `model:` line `kit review` printed for you,
+  and it prints one only when the config asks for an escalation (`evidence.md`
+  &middot; *The model of a dispatch*).
 - **The writer never approves their own work.** Review runs in separate,
   clean-context agents that did not implement.
 - **Never merge.** The funnel ends at the draft pull request.
@@ -100,25 +109,34 @@ it is the one you can fix without stopping (`evidence.md` &middot; *Stale kit*).
   create it, **link it to a parent** with `addSubIssue`, or write in the issue why it
   stands alone (`evidence.md` &middot; *Orphan issues*).
 
-- **Compact at a boundary, never at a percentage, and always before a pause.**
-  Compacting is cheap and a prefix rewrite is not, and the rewrite is not something
-  you choose. The value of compacting is not the cheaper reads afterwards, it is that
-  the rewrite which happens anyway is smaller (`evidence.md` &middot; *Prefix rewrite*).
+- **Compact at a boundary, at a prefix size and not at a share of the window, and
+  always before a pause.** Compacting is cheap and a prefix rewrite is not, and the
+  rewrite is not something you choose (`evidence.md` &middot; *Prefix rewrite*, and
+  *Why the bands are token counts* for the floors).
 
   ```
   kit context
   ```
 
   It reads this session through `CLAUDE_CODE_SESSION_ID` and prints one of four
-  verdicts: **HOLD** above 60% of the window free, **AT THE NEXT BOUNDARY** from 60
-  to 35, **NOW** from 35 to 15 even mid-task, and **LATE** below 15, where the
-  automatic compaction picks the cut point instead of you.
+  verdicts: **HOLD** below 120k tokens in context, **AT THE NEXT BOUNDARY** from
+  120k to 300k, **NOW** above 300k, and **LATE** below 15% of the window free,
+  where the automatic compaction picks the cut point instead of you. Since 0.10.0
+  the first three are token counts rather than percentages, because a 300k prefix
+  costs the same to re-read on a 200k window and a 1M one, and on 1M the old
+  percentages answered HOLD for a session that had peaked at 507k.
 
-  The end of a unit of work is the trigger; the percentage is only how urgent the
-  next boundary is. Compacting mid-task trades a dollar for file re-reads that cost
-  more and come back worse. One case ignores the percentage: **before a long pause**,
-  where a large prefix is the only place one request costs five dollars
-  (`evidence.md` &middot; *A pause is the expensive moment*).
+  The end of a unit of work is still the trigger, and the band is only how urgent
+  the next boundary is. What changed is that the bands now have arithmetic behind
+  them: a turn re-reads its whole prefix at US$ 0.50 per million, and one
+  compaction was measured at about US$ 0.30 more than a normal turn, so compacting
+  at 250k repays itself in about **3 turns** and at 400k in under 2. `kit context`
+  prints that number for the size you are actually at. Compacting mid-task still
+  trades a dollar for file re-reads that come back worse, which is why NOW means
+  the next boundary you reach and not this line of the diff. One case ignores the
+  band entirely: **before a long pause**, where a large prefix is the only place
+  one request costs five dollars (`evidence.md` &middot; *A pause is the expensive
+  moment*).
 
 ### Effort level, declared by the spec in stage 1
 
@@ -210,13 +228,22 @@ Each stage has a named agent that ships with the plugin, and the dispatch has to
 because a generic "dispatch a planning subagent" resolves to a general-purpose agent and
 the standing instructions in these files are lost:
 
-| Stage | Agent | Carries |
-| --- | --- | --- |
-| 1 | `claude-kit:funnel-triage` | the return shape, the verdicts, the invariant table, the sizing rule |
-| 2 | `claude-kit:funnel-implementer` | the prohibitions, the bug-reproduction-first rule, what to do with a red gate |
-| 3 | `claude-kit:funnel-test-writer` | what to test in what order, and the two failure modes that are the writer's own |
-| 4 | `claude-kit:funnel-reviewer` | the reading discipline, the grading rubric, CONFIRMED against PLAUSIBLE |
-| 4 | `claude-kit:funnel-screen-lens` | report only what you observed, the three-source standard, and NOT PROVEN is not a pass |
+| Stage | Agent | Model | Carries |
+| --- | --- | --- | --- |
+| 1 | `claude-kit:funnel-triage` | inherit | the return shape, the verdicts, the invariant table, the sizing rule |
+| 2 | `claude-kit:funnel-implementer` | inherit | the prohibitions, the bug-reproduction-first rule, what to do with a red gate |
+| 3 | `claude-kit:funnel-test-writer` | sonnet | what to test in what order, and the two failure modes that are the writer's own |
+| 4 | `claude-kit:funnel-reviewer` | sonnet | the reading discipline, the grading rubric, CONFIRMED against PLAUSIBLE |
+| 4 | `claude-kit:funnel-screen-lens` | inherit | report only what you observed, the three-source standard, and NOT PROVEN is not a pass |
+
+The Model column is the frontmatter, printed here so a dispatch never has to guess
+it and never has to state it. Two stages are on Sonnet because their input is
+already scoped for them: the test writer gets the spec and the list of files that
+changed, and the reviewer gets a diff file that is already written plus the exact
+document list. The two on `inherit` are the two that read an open codebase to
+decide something, which is where the stronger model earns its price. Measured over
+thirteen days: the reviewer ran 310 times at US$ 2.16 each, so it is the fan-out,
+not the depth, that this column is about.
 
 The screen lens runs only when the change touched a screen and `browser.enabled`
 is true. It is the only agent here that finds out rather than reasons, which is
@@ -332,6 +359,17 @@ A fix round arriving back here from stage 4 runs `kit gate
 implement_fix_round` instead, which is the incremental form. The full suite is
 paid once at stage 5, off a receipt.
 
+**One implementer per round, carrying every CONFIRMED finding of that round.** Not
+one per finding, and not one per lens that raised one. A second implementer on the
+same branch reads the same repository from an empty context to fix a second line in
+a file the first one already had open, which is the read paid twice for no
+independence in return: the fix is not a judgement anybody wanted a fresh opinion
+on. Measured over thirteen days, the implementer ran **101 times for about 40
+tasks**, which is 2.5 implementations per task on a funnel whose `maxRounds` is 2
+(`evidence.md` &middot; *An empty slice on a fix round*).
+If two CONFIRMED findings genuinely conflict, that is the spec having been wrong,
+which stage 4's own closing rule already covers: say so and stop.
+
 **A red gate is not automatically the implementer's defect.** `kit gate` prints
 a `flake` line when a failing file is on the config's quarantine list, and says
 whether this branch's diff can even reach it. A gate red in a file the diff
@@ -404,8 +442,12 @@ a skipped read must not lose:
 - **The rubric travels in every dispatch**: Critical is data loss, security, money or
   production; Important is anything that makes the task untrustworthy until fixed;
   Minor never enters the loop and goes to the deferred ledger.
-- **CONFIRMED** goes back to stage 2 as the spec. **PLAUSIBLE** is one line in the
-  pull request body's points of attention, and blocks nothing.
+- **A fix round dispatches only the slices the fix touched.** `--since` prints
+  `skipped` for the others and names them; that line is the whole instruction
+  (`evidence.md` &middot; *An empty slice on a fix round*).
+- **CONFIRMED** goes back to stage 2 as the spec, all of that round's findings in
+  **one** implementer dispatch. **PLAUSIBLE** is one line in the pull request
+  body's points of attention, and blocks nothing.
 - **Cap at `maxRounds`, and at the cap every open finding gets a written decision.**
   Silent discard is prohibited.
 
@@ -437,7 +479,17 @@ a skipped read must not lose:
    repo template's own sections; what to check; what is knowingly left out and
    who owns it; and the link to the ledger comment.
 
-4. `gh pr comment` the findings ledger, right after the URL exists.
+4. The findings ledger, right after the URL exists. **It has its own budget, and
+   it is checked the same way the body is**: write it to a file, run `kit ledger
+   <file>`, then `gh pr comment <n> --body-file <file>`. At most **1000
+   characters of prose** and **350 per section**, which is half the body's,
+   because the ledger is the second thing read and only by somebody who already
+   decided to. One row per finding in a table, which costs no prose at all;
+   `review.md` has the columns. Measured on 2026-08-29, the ledgers on 874, 877
+   and 880 ran 4515, 4432 and 3734 characters of prose, each more than twice what
+   the body beside it was allowed. A follow-up comment answering a review is a
+   ledger too and runs the same command (`evidence.md` &middot; *Why the ledger has a
+   budget*).
 5. `kit board in_review --issue <issue>`, after the pull request URL exists.
 6. Never `done`. The funnel does not merge, and the tracker's own automation
    owns that column.

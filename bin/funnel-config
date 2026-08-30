@@ -139,7 +139,7 @@ resolve() {
     subst'
 }
 
-KNOWN_KEYS='["$schema","base","docs","branch","worktree","gates","stages","slices","lenses","effort","maxRounds","maxParallelAgents","gateJobs","flaky","browser","board"]'
+KNOWN_KEYS='["$schema","base","docs","branch","worktree","gates","stages","slices","lenses","effort","reviewModel","maxRounds","maxParallelAgents","gateJobs","flaky","browser","board"]'
 
 cmd="${1:-print}"
 case "$cmd" in

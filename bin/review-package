@@ -85,7 +85,13 @@ claims_candidates() {
   ( cd "$REPO_ROOT" && printf '%s\n' "$tokens" \
       | while IFS= read -r t; do
           [ -z "$t" ] && continue
-          grep -rInF --exclude-dir=node_modules -- "$t" $targets 2>/dev/null | head -4
+          # `|| true` because a token that matches no prose is the ordinary case,
+          # not a failure. Under `set -o pipefail` the grep's 1 became the
+          # pipeline's status and `set -e` killed the whole plan mid-print: the
+          # dispatch lines were already on stdout, so a claims lens whose
+          # candidates matched nothing printed a plan with its count line missing
+          # and exit 1 attached, which reads as a plan rather than as an error.
+          grep -rInF --exclude-dir=node_modules -- "$t" $targets 2>/dev/null | head -4 || true
         done ) | sort -u | head -60
 }
 
@@ -135,6 +141,8 @@ case "${1:-}" in
       s="$("$CFG" get ".lenses.\"$l\".slice")"
       printf '%s\n' "$slices" | grep -qxF "$s" || slices="$slices$s"$'\n'
     done
+    model="$("$CFG" get ".reviewModel.\"$level\"?" 2>/dev/null || true)"
+    case "$model" in null|"") model="" ;; esac
     n=0
     printf 'effort %s%s\n' "$level" "${since:+, fix round since ${since:0:8}}"
     for s in $slices; do
@@ -151,11 +159,27 @@ case "${1:-}" in
       done
       f="$(write_named_slice "$s")"
       lines="$(grep -c '^[+-]' "$f" || true)"
+      # A fix round reviews the fix. A slice the fix never touched has nothing in
+      # it, and a reviewer dispatched at an empty diff still pays a full cold
+      # context to report that there is nothing to report. First round always
+      # dispatches, because an empty slice there is a fact the reviewer's absence
+      # would hide.
+      if [ -n "$since" ] && [ "$lines" -eq 0 ]; then
+        n=$((n - 1))
+        printf '\nskipped     parts:%s\n' "$group"
+        printf '  the fix since %s touched nothing in slice "%s"\n' "${since:0:8}" "$s"
+        continue
+      fi
       docbytes=0
       for d in $docs; do
         [ -f "$REPO_ROOT/$d" ] && docbytes=$((docbytes + $(wc -c <"$REPO_ROOT/$d")))
       done
       printf '\ndispatch %s   parts:%s\n' "$n" "$group"
+      # The reviewer's model is its frontmatter, and a dispatch that writes one
+      # itself silently overrides it. The one legitimate override is an escalation
+      # this repo asked for by effort level, so it is printed here rather than
+      # remembered: with no `reviewModel` entry nothing prints and nothing is passed.
+      [ -n "$model" ] && printf '  model %s   (config reviewModel.%s; pass it, and pass nothing otherwise)\n' "$model" "$level"
       printf '  diff  %s  (%s changed lines)\n' "$f" "$lines"
       if [ -n "${docs// /}" ]; then
         printf '  read  %s  (%s bytes)\n' "$(printf '%s' "$docs" | tr '\n' ' ')" "$docbytes"

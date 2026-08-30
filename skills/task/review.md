@@ -99,6 +99,12 @@ Put these in every review dispatch:
   specific doubt.
 - **A reviewer does not dispatch subagents.** A reviewer spawned by a reviewer
   duplicates another at full cost and its verdict carries no weight.
+- **Do not write a model into the dispatch.** The reviewer runs Sonnet from its own
+  frontmatter, because its input is already scoped for it: a diff file that is
+  already written, plus an exact document list. The one legitimate override is a
+  `model` line `kit review` printed, which it prints only when this repo's
+  `reviewModel` asks for an escalation at this effort level. No line, no model
+  (`evidence.md` &middot; *The model of a dispatch*).
 - The final message **is** the report: verdict first, no preamble, no closing
   summary.
 
@@ -142,12 +148,60 @@ comment is next to the diff, collapses on its own, and does not have to be read
 before deciding whether to review. The scratchpad file it replaced was written to
 nobody, and the body absorbed it (`evidence.md` &middot; *Why the ledger is a comment*).
 
+### The ledger is a table, and it has a budget
+
+A comment nobody finishes reading is a comment nobody read. Measured on 2026-08-29,
+the ledgers on pull requests 874, 877 and 880 carried **4515, 4432 and 3734
+characters of prose**, each more than twice the 2000 the body itself is allowed,
+and the body is the part written to be read first.
+
+So the ledger is **a table plus a few sentences**, and the split is not a style
+preference: `kit ledger` counts prose and ignores table rows, exactly as
+`kit pr-body` does, so a finding moved into a row costs nothing and a finding
+explained in a paragraph costs its full length.
+
+One row per finding, in this order, most severe first:
+
+| Sev | Lens | Verdict | Finding | Decision |
+| --- | --- | --- | --- | --- |
+| Critical | failure-edges | CONFIRMED | the retry path never logs what was lost | fixed, `a1b2c3d` |
+| Important | conventions | PLAUSIBLE | the hook could be a selector | deferred, #612 |
+
+`Finding` is one line: what is wrong, not why you believe it. `Decision` is one of
+fixed with the sha, deferred with the issue, or dismissed with four words of
+reason. The reasoning behind a finding belongs in the row's own thread if anybody
+asks for it, and until somebody asks, it is not owed.
+
+Prose is then for what a table cannot hold: what the rounds converged on, and what
+the reviewer of this pull request should look at with their own eyes.
+
+```
+kit ledger <file>          # at most 1000 characters of prose, 350 per section
+gh pr comment <n> --body-file <file>
+```
+
+Over budget it exits 3 and prints the sections by size. **Cut, do not compress**,
+and the same rule the body has applies here: everything worth keeping has a better
+home. A follow-up comment answering a review is a ledger too, and runs the same
+command: measured on the same day, the "Resposta ao review" comment on 880 was
+3419 characters against a body of 1876 (`evidence.md` &middot; *Why the ledger has a
+budget*).
+
 The re-review after a fix round is **incremental**, which is what `--since`
 does: the lens receives the fix diff plus the list of findings it is verifying,
 each answered `ADDRESSED` or `NOT ADDRESSED`, plus new breakage inside the fix
 diff only. A full re-read is warranted only when the fix moved a contract, a
 signature, a route, a schema, an order of operations, and then only for the
 lenses that contract touches.
+
+**A slice the fix never touched is not dispatched at all.** `kit review <level>
+--since <sha>` prints `skipped` for it and names the slice, and that line is the
+whole instruction: do not send it, do not send it with an apology in the prompt. A
+reviewer at an empty diff still pays a full cold context to report that there is
+nothing to report, and a fix that touched only `src` was re-dispatching the tests
+and surfaces slices every round. The first round never skips, because there an
+empty slice is a fact worth having stated (`evidence.md` &middot; *An empty slice on
+a fix round*).
 
 Cap at `maxRounds`, and **at the cap every open finding gets a written
 decision**. Silent discard is prohibited. A round whose fix is larger than the

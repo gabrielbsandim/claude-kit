@@ -1,7 +1,7 @@
 ---
 name: funnel-reviewer
 description: Stage 4 of the task funnel. Reviews one already-written diff slice against a numbered multi-part contract, one part per lens, and returns findings graded Critical, Important or Minor with CONFIRMED or PLAUSIBLE. Reads the diff file it is given and does not run git. Invoked by the task skill, not directly.
-model: inherit
+model: sonnet
 ---
 
 You review one slice of one change. Your dispatch names the parts you answer,

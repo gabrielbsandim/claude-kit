@@ -14,10 +14,13 @@ tokens in one request.
 So the point of compacting is not the cheaper reads afterwards. It is that the
 rewrite which will happen anyway is smaller when it does.
 
-**The trigger is the end of a unit of work, not a percentage.** Compacting
-mid-task trades a dollar for file re-reads that cost more and come back worse.
-The percentage only says how urgent the next boundary is, which is what this
-command prints.
+**The trigger is the end of a unit of work, and the threshold is a prefix size,
+not a share of the window.** Compacting mid-task trades a dollar for file re-reads
+that cost more and come back worse, so the boundary is what fires it. But how
+urgent the next boundary is depends on how many tokens every turn is now re-reading,
+and that is an absolute number: the same 300k prefix costs the same on a 200k
+window and a 1M one. Until 0.10.0 these bands were percentages of the window, which
+on 1M put a session that peaked at 507k tokens in HOLD for its entire life.
 
 One case ignores the percentage entirely: **compact before a long pause.** In the
 session measured on Bedrock, 116 of 152 prefix rewrites followed a gap of 5 to 60
@@ -44,23 +47,76 @@ import sys
 # change model mid-run.
 DEFAULT_WINDOW = 1_000_000
 
-# The bands. Percentages of the window still free, largest first.
-BANDS = (
-    (60, "HOLD", "no routine compaction; compact only if you are stopping"),
-    (35, "AT THE NEXT BOUNDARY", "compact when the current unit of work ends, do not let it slide"),
-    (15, "NOW", "compact even mid-task: a prefix rewrite here costs several dollars"),
-    (0, "LATE", "the automatic one fires around here and picks the cut point for you"),
+# The bands, on the prefix itself. Measured 2026-08-29 over 988 transcripts: the
+# median session peaked at 260,253 tokens of context, the p90 at 506,574 and the
+# largest at 654,359. Against a 1M window those are 74%, 49% and 35% free, so the
+# old percentage bands answered HOLD or AT THE NEXT BOUNDARY for essentially every
+# session ever run, and HOLD is the one verdict that is never actionable.
+#
+# What makes a threshold arguable is payback, not proportion. A turn whose prefix
+# is P tokens pays P x US$ 0.50/M just to read it back. Compacting costs one prefix
+# rewrite, measured at US$ 0.4389 for the turn following a compaction against
+# US$ 0.1346 for a normal one across 35,583 main-loop turns, so about US$ 0.30
+# extra, and it resets the prefix to roughly 40k. Compacting at P therefore pays
+# for itself in 0.30 / ((P - 40_000) x 0.5e-6) turns:
+#
+#     P = 120k    about 8 turns
+#     P = 250k    about 3 turns
+#     P = 400k    under 2 turns
+#
+# Sessions run into the hundreds of turns, so past 250k the compaction has paid for
+# itself before the next gate finishes. What it does not pay for is a redo, which is
+# why the trigger is still the end of a unit of work: NOW means the next boundary
+# you reach, not this line of the diff.
+BANDS_TOKENS = (
+    (300_000, "NOW", "compact at the very next boundary, and take one if none is close"),
+    (120_000, "AT THE NEXT BOUNDARY", "compact when the current unit of work ends, do not let it slide"),
+    (0, "HOLD", "no routine compaction; compact only if you are stopping"),
 )
 
-RATES = {"in": 5.0, "out": 25.0, "cw": 6.25, "cr": 0.50}
+# The one band that is still a percentage, because what it describes is the
+# automatic compaction, and that fires against the window rather than against a
+# token count.
+LATE_FREE_PCT = 15
+
+# Per million tokens. Cache write is 1.25x input at the 5-minute TTL, cache read is
+# 0.1x. Matched on a substring of the model id rather than on an exact name, so a
+# point release does not silently fall back to the wrong tier.
+PRICES = {
+    "opus": {"in": 5.0, "out": 25.0, "cw": 6.25, "cr": 0.50},
+    "sonnet": {"in": 2.0, "out": 10.0, "cw": 2.50, "cr": 0.20},
+    "haiku": {"in": 1.0, "out": 5.0, "cw": 1.25, "cr": 0.10},
+}
+# The default when a request names no model, and the tier this command's own prose
+# quotes. Opus rather than an average: over-reporting a saving is the failure mode
+# that matters here.
+RATES = PRICES["opus"]
 
 
-def cost(u):
+def rates_for(model):
+    name = (model or "").lower()
+    if "haiku" in name:
+        return PRICES["haiku"]
+    if "sonnet" in name:
+        return PRICES["sonnet"]
+    return PRICES["opus"]
+
+
+def cost(u, model=None):
+    """One request's list price, at the tier its own model is billed at.
+
+    A single Opus rate was close enough while every agent inherited the main loop's
+    model. It stopped being close enough in 0.10.0, when the test writer and the
+    reviewer moved to Sonnet: priced as Opus, a Sonnet stage reports about 2.5 times
+    what it costs, which is exactly the number somebody would be reading to decide
+    whether moving it was worth doing.
+    """
+    rates = rates_for(model if model is not None else u.get("_model"))
     return (
-        u.get("input_tokens", 0) * RATES["in"]
-        + u.get("output_tokens", 0) * RATES["out"]
-        + u.get("cache_creation_input_tokens", 0) * RATES["cw"]
-        + u.get("cache_read_input_tokens", 0) * RATES["cr"]
+        u.get("input_tokens", 0) * rates["in"]
+        + u.get("output_tokens", 0) * rates["out"]
+        + u.get("cache_creation_input_tokens", 0) * rates["cw"]
+        + u.get("cache_read_input_tokens", 0) * rates["cr"]
     ) / 1e6
 
 
@@ -106,6 +162,12 @@ def read_usage(path):
             if key in seen:
                 continue
             seen.add(key)
+            # The model and the timestamp travel with the usage under private keys,
+            # because a caller pricing a whole period needs both and the alternative
+            # is a second pass over the same file. Summing code that walks the known
+            # token keys is unaffected.
+            usage["_model"] = message.get("model")
+            usage["_ts"] = row.get("timestamp") or ""
             out.append(usage)
     return out
 
@@ -123,11 +185,23 @@ def is_rewrite(u):
     )
 
 
-def band(free_pct):
-    for floor, verdict, advice in BANDS:
-        if free_pct > floor:
+def band(used, free_pct):
+    if free_pct <= LATE_FREE_PCT:
+        return "LATE", "the automatic one fires around here and picks the cut point for you"
+    for floor, verdict, advice in BANDS_TOKENS:
+        if used > floor:
             return verdict, advice
-    return BANDS[-1][1], BANDS[-1][2]
+    return BANDS_TOKENS[-1][1], BANDS_TOKENS[-1][2]
+
+
+def payback_turns(used):
+    """How many turns of cheaper reads repay one compaction at this prefix.
+
+    None when the prefix is already small enough that the arithmetic says nothing:
+    below the reset size there is no saving to divide by.
+    """
+    saved = (used - 40_000) * 0.5e-6
+    return 0.30 / saved if saved > 0 else None
 
 
 def main(argv):
@@ -169,7 +243,8 @@ def main(argv):
     # one just added. This is the number the prefix rewrite would be charged on.
     used = last.get("cache_read_input_tokens", 0) + last.get("cache_creation_input_tokens", 0)
     free_pct = max(0, round((args.window - used) * 100 / args.window))
-    verdict, advice = band(free_pct)
+    verdict, advice = band(used, free_pct)
+    payback = payback_turns(used)
 
     rewrites = [u for u in reqs if is_rewrite(u)]
     spent = sum(cost(u) for u in reqs)
@@ -182,6 +257,7 @@ def main(argv):
         print(json.dumps({
             "session": os.path.splitext(os.path.basename(path))[0][:8], "window": args.window,
             "used": used, "free_pct": free_pct, "verdict": verdict,
+            "payback_turns": round(payback, 1) if payback else None,
             "requests": len(reqs), "rewrites": len(rewrites),
             "spent": round(spent, 2), "burned_on_rewrites": round(burned, 2),
             "one_rewrite_now": round(at_risk, 2),
@@ -196,6 +272,10 @@ def main(argv):
     print(f"  {tag}")
     print(f"  {advice}")
     print(f"  a prefix rewrite at this size would cost about US$ {at_risk:.2f} in one request")
+    if payback:
+        turns = max(1, round(payback))
+        print(f"  compacting here repays itself in about {turns} "
+              f"{'turn' if turns == 1 else 'turns'} of cheaper reads")
     share = f", {burned / spent * 100:.0f}% of it" if spent else ""
     print(f"  this session: {len(reqs)} requests, {len(rewrites)} rewrites, "
           f"US$ {spent:.2f} at API rates and US$ {burned:.2f} on rewrites{share}")

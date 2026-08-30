@@ -6,6 +6,7 @@ and the exit codes are the ones a funnel run gets.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -191,6 +192,47 @@ check("14 script section default is 600", "DEFAULT_SECTION_MAX = 600" in src, "c
 kit = open(os.path.join(ROOT, "bin", "kit"), encoding="utf-8").read()
 check("15 kit dispatches pr-body", "pr-body)" in kit, "no dispatcher entry")
 check("15 kit lists pr-body in usage", "kit pr-body" in kit, "not in the usage header")
+
+# 16. `kit ledger` is the same measurement on the budget a comment gets. The ledger
+#     had no budget until 0.10.0 and the body had one, so the overflow went there:
+#     measured 2026-08-29, the ledgers on pull requests 874, 877 and 880 carried
+#     4515, 4432 and 3734 characters of prose against bodies allowed 2000.
+check("16 kit dispatches ledger", "ledger)" in kit, "no dispatcher entry")
+check("16 kit lists ledger in usage", "kit ledger" in kit, "not in the usage header")
+check("16 the ledger budget is tighter than the body's",
+      "--max 1000" in kit and "--section-max 350" in kit,
+      "a ledger allowed as much prose as the body is a ledger with no budget")
+# The caller's own flags come after the defaults, so a caller can still widen it.
+check("16 the defaults precede \"$@\"",
+      re.search(r'ledger\)\s+exec "\$KIT_BIN/pr-body" --max \d+ --section-max \d+ "\$@"', kit)
+      is not None,
+      "flags after \"$@\" would override the caller instead of defaulting")
+
+# 17. A ledger over budget is told what a ledger can do about it. Sent the body's
+#     advice, "move the audit trail into a pull request comment", a ledger that
+#     already is that comment has nowhere to go and compresses instead, which is
+#     the one thing the line tells it not to do.
+long_ledger = "## Findings\n\n" + ("palavra " * 400) + "\n"
+out, rc, wd = run(long_ledger, args=("--max", "1000", "--section-max", "350"))
+check("17 a long ledger fails the ledger budget", rc == 3, f"rc={rc} out={out!r}")
+check("17 and is told to use a table row", "table row" in out, out)
+check("17 and is not told to move it into a comment",
+      "belongs in a pull request comment" not in out, out)
+shutil.rmtree(wd, ignore_errors=True)
+
+# A table costs no prose at all, which is what makes the budget reachable rather
+# than merely small: the same findings in rows pass what the paragraphs failed.
+table = (
+    "## Findings\n\n"
+    "| Sev | Lens | Verdict | Finding | Decision |\n"
+    "| --- | --- | --- | --- | --- |\n"
+    + "".join(f"| Important | conventions | CONFIRMED | finding number {i} "
+             f"that would be a paragraph | fixed, abc{i} |\n" for i in range(12))
+    + "\nTwo rounds, both spent. Look at the migration by hand.\n"
+)
+out, rc, wd = run(table, args=("--max", "1000", "--section-max", "350"))
+check("17 twelve findings in rows fit the budget", rc == 0, f"rc={rc} out={out!r}")
+shutil.rmtree(wd, ignore_errors=True)
 
 print(f"{passes} passed, {len(failures)} failed")
 for line in failures:

@@ -211,10 +211,21 @@ def main(argv):
     for section, size in sorted(m["sections"], key=lambda x: -x[1]):
         mark = "  <-- over the cap" if size > args.section_max else ""
         print(f"    {size:>6}  {section}{mark}")
-    print(
-        "  Cut, do not compress: the audit trail belongs in a pull request comment,\n"
-        "  which is one click from the diff and does not have to be read first."
-    )
+    # Which advice applies depends on which budget was asked for. Told to cut the
+    # audit trail into a comment, a ledger that already is that comment has nowhere
+    # left to go, so it gets compressed instead, which is the one thing the line says
+    # not to do.
+    if args.max < DEFAULT_MAX:
+        print(
+            "  Cut, do not compress: a finding belongs in a table row, which costs no\n"
+            "  prose at all, and the reasoning behind it belongs in that row's thread\n"
+            "  if anybody asks for it."
+        )
+    else:
+        print(
+            "  Cut, do not compress: the audit trail belongs in a pull request comment,\n"
+            "  which is one click from the diff and does not have to be read first."
+        )
     return 3
 
 

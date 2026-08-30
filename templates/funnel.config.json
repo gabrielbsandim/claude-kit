@@ -1,67 +1,123 @@
 {
   "$schema": "https://raw.githubusercontent.com/gabrielbsandim/claude-kit/main/templates/funnel.schema.json",
-
   "base": "develop",
-
   "docs": {
     "entry": "AGENTS.md",
     "pipeline": "docs/pipeline.md",
     "commits": "docs/commit-conventions.md"
   },
-
   "branch": {
     "pattern": "{prefix}/{issue}-{slug}",
-    "prefix": { "feature": "feat", "bug": "fix", "refactor": "refactor", "chore": "chore" }
+    "prefix": {
+      "feature": "feat",
+      "bug": "fix",
+      "refactor": "refactor",
+      "chore": "chore"
+    }
   },
-
   "worktree": {
     "path": "../{repo}-{issue}",
-    "setup": ["npm ci", "npx prisma generate"],
+    "setup": [
+      "npm ci",
+      "npx prisma generate"
+    ],
     "skipSetupWhenDocOnly": true
   },
-
   "gates": {
-    "lint": { "cmd": "npm run check" },
-    "types": { "cmd": "npx tsc --noEmit" },
-    "test": { "cmd": "npm test" },
-    "test_changed": { "cmd": "npx vitest run --changed {base}" },
-    "coverage": { "cmd": "npm run test:coverage" }
+    "lint": {
+      "cmd": "npm run check"
+    },
+    "types": {
+      "cmd": "npx tsc --noEmit"
+    },
+    "test": {
+      "cmd": "npm test"
+    },
+    "test_changed": {
+      "cmd": "npx vitest run --changed {base}"
+    },
+    "coverage": {
+      "cmd": "npm run test:coverage"
+    }
   },
-
   "stages": {
-    "implement_first_pass": ["lint", "types", "test"],
-    "implement_fix_round": ["types", "test_changed"],
-    "tests": ["test"],
-    "ship": ["lint", "types", "test", "coverage"]
+    "implement_first_pass": [
+      "lint",
+      "types",
+      "test"
+    ],
+    "implement_fix_round": [
+      "types",
+      "test_changed"
+    ],
+    "tests": [
+      "test"
+    ],
+    "ship": [
+      "lint",
+      "types",
+      "test",
+      "coverage"
+    ]
   },
-
   "slices": {
     "src": "{base}...HEAD -- src ':(exclude)src/tests'",
     "tests": "{base}...HEAD -- src/tests",
     "surfaces": "{base}...HEAD -- docs README.md",
     "all": "{base}...HEAD"
   },
-
   "lenses": {
-    "correctness": { "slice": "src", "docs": [] },
+    "correctness": {
+      "slice": "src",
+      "docs": []
+    },
     "conventions": {
       "slice": "src",
-      "docs": ["docs/architecture.md", "docs/conventions.md", "docs/frontend.md"]
+      "docs": [
+        "docs/architecture.md",
+        "docs/conventions.md",
+        "docs/frontend.md"
+      ]
     },
-    "failure-edges": { "slice": "src", "docs": [] },
-    "security": { "slice": "src", "docs": ["docs/security.md"] },
-    "tests": { "slice": "tests", "docs": ["docs/testing.md"] },
-    "surfaces": { "slice": "surfaces", "docs": [] },
+    "failure-edges": {
+      "slice": "src",
+      "docs": []
+    },
+    "security": {
+      "slice": "src",
+      "docs": [
+        "docs/security.md"
+      ]
+    },
+    "tests": {
+      "slice": "tests",
+      "docs": [
+        "docs/testing.md"
+      ]
+    },
+    "surfaces": {
+      "slice": "surfaces",
+      "docs": []
+    },
     "claims": {
       "slice": "all",
       "docs": [],
-      "grepTargets": ["docs", "README.md"]
+      "grepTargets": [
+        "docs",
+        "README.md"
+      ]
     }
   },
-
   "effort": {
-    "light": ["correctness"],
-    "standard": ["correctness", "conventions", "tests", "claims"],
+    "light": [
+      "correctness"
+    ],
+    "standard": [
+      "correctness",
+      "conventions",
+      "tests",
+      "claims"
+    ],
     "deep": [
       "correctness",
       "conventions",
@@ -72,10 +128,11 @@
       "claims"
     ]
   },
-
+  "reviewModel": {
+    "deep": "opus"
+  },
   "maxRounds": 2,
   "maxParallelAgents": 3,
-
   "browser": {
     "enabled": false,
     "baseUrl": "http://localhost:3000",
@@ -83,23 +140,50 @@
     "readyPath": "/",
     "readyTimeout": 180,
     "artifactsDir": ".playwright-mcp",
-    "efforts": ["standard", "deep"],
+    "efforts": [
+      "standard",
+      "deep"
+    ],
     "appDir": "src/app",
-    "entryFiles": ["page.tsx", "page.ts", "page.jsx", "page.js"],
-    "screenGlobs": ["src/app/**", "src/features/**", "src/components/**"],
-    "excludeGlobs": ["src/app/api/**", "*/tests/*", "*.test.*", "*.spec.*"],
+    "entryFiles": [
+      "page.tsx",
+      "page.ts",
+      "page.jsx",
+      "page.js"
+    ],
+    "screenGlobs": [
+      "src/app/**",
+      "src/features/**",
+      "src/components/**"
+    ],
+    "excludeGlobs": [
+      "src/app/api/**",
+      "*/tests/*",
+      "*.test.*",
+      "*.spec.*"
+    ],
     "routeParams": {},
     "routes": {},
     "maxRoutes": 6,
     "viewports": [
-      { "name": "mobile", "width": 390, "height": 844 },
-      { "name": "desktop", "width": 1440, "height": 900 }
+      {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      {
+        "name": "desktop",
+        "width": 1440,
+        "height": 900
+      }
     ],
-    "auth": { "loginPath": "/login", "userEnv": "", "passEnv": "" },
+    "auth": {
+      "loginPath": "/login",
+      "userEnv": "",
+      "passEnv": ""
+    },
     "uxDocs": []
   },
-
   "flaky": [],
-
   "board": ".claude/board.json"
 }

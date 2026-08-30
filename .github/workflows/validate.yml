@@ -101,6 +101,9 @@ jobs:
       - name: Fan-out routing and the short lane
         run: python3 tests/test-fan-out-routing.py
 
+      - name: A fix round dispatches only the slices the fix touched
+        run: python3 tests/test-review-package.py
+
       - name: kit reload relinks and says only true things
         run: python3 tests/test-kit-reload.py
 
