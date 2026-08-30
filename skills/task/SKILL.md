@@ -40,7 +40,7 @@ slice.
 ## Before stage 1: is this skill the one that shipped
 
 ```
-kit version 0.10.0
+kit version 0.11.0
 ```
 
 The literal is the version this file shipped in, so the command compares the text you
@@ -385,20 +385,17 @@ slice as a **numbered part of one contract**, with the diff already written to a
 file and the exact document list for the group. Give each block, verbatim, to its own
 `funnel-reviewer`.
 
-There is also `workflows/review-fanout.js`, a deterministic fan-out that adds a
-verifier per finding whose instruction is to refute it. Use it when the review is
-the whole job; use the dispatches above when you are inside a task.
-
-Fan-out per lens is not a neutral choice, it is the thing that was measured and
-removed: grouping by slice keeps independent contexts exactly where the material
-differs and stops paying for the same read twice (`evidence.md` &middot; *Why the
-dispatch is grouped by slice*).
+`workflows/review-fanout.js` is a deterministic fan-out that adds a verifier per
+finding, instructed to refute it: use it when the review is the whole job, and the
+dispatches above when you are inside a task. Fan-out per lens was measured and
+removed, because grouping by slice stops paying for the same read twice
+(`evidence.md` &middot; *Why the dispatch is grouped by slice*).
 
 ### What stage 4 owes you before the dispatches go out
 
 Read `review.md` in this skill's directory now, before writing a single dispatch. It
 carries the browser half, what may actually run at once, the reviewer discipline, the
-two lenses most repos are missing, and the grading rubric. What follows is only what
+lenses most repos are missing, and the grading rubric. What follows is only what
 a skipped read must not lose:
 
 - **The browser half runs when `browser.enabled` is true, the effort level is in
@@ -411,6 +408,10 @@ a skipped read must not lose:
 - **A fix round dispatches only the slices the fix touched.** `--since` prints
   `skipped` for the others and names them; that line is the whole instruction
   (`evidence.md` &middot; *An empty slice on a fix round*).
+- **A dispatch marked `alone: reads outside the diff` goes alone, both of its
+  file lists verbatim.** All eight findings an outside reviewer returned on 879
+  and 880 needed that permission (`review.md` &middot; *The lens that is allowed
+  to read outside the diff*).
 - **CONFIRMED** goes back to stage 2 as the spec, all of that round's findings in
   **one** implementer dispatch. **PLAUSIBLE** is one line in the pull request
   body's points of attention, and blocks nothing.

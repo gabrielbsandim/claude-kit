@@ -28,11 +28,64 @@ die() { printf '%s\n' "$*" >&2; exit 1; }
 # Tree SHA of the working directory, including untracked-but-not-ignored files,
 # computed in a throwaway index so the real one is never touched.
 work_tree_sha() {
-  local idx tree
+  local idx tree err line ok e
   idx="$(mktemp)"
   rm -f "$idx"
   GIT_INDEX_FILE="$idx" git read-tree HEAD 2>/dev/null || true
-  GIT_INDEX_FILE="$idx" git add -A
+  # `git add -A` refuses any path that is not a regular file, a symlink or a git
+  # directory, and one is enough to fail the whole add. When that happens
+  # `write-tree` quietly returns the tree already in the index, which is HEAD's:
+  # every receipt is then keyed to the last commit instead of to the working
+  # directory, and verifies clean against any uncommitted change at all. That is
+  # the one thing a receipt exists to refuse, so it is never allowed to be silent.
+  #
+  # The paths themselves are usually not the repository's: a sandbox that denies
+  # reads on a dotfile does it by bind-mounting /dev/null over the path, which git
+  # sees as a character device inside the work tree. Found in obranova on
+  # 2026-08-30 as `.bash_profile`, `.bashrc` and `.gitconfig`, none of which exist
+  # outside the sandbox. Nothing git refuses to stage was ever trackable, so
+  # excluding exactly those paths yields the tree the working directory actually
+  # has, and anything else still stops the run.
+  err="$(mktemp)"
+  excl=()
+  ok=0
+  # A loop, because `git add -A` names one offending path and aborts: with three of
+  # them a single retry still fails, on the second. Bounded so a failure this does
+  # not understand cannot spin.
+  for _ in $(seq 1 20); do
+    if GIT_INDEX_FILE="$idx" git add -A -- . ${excl[@]+"${excl[@]}"} 2>"$err"; then
+      ok=1; break
+    fi
+    line="$(grep -m1 'can only add regular files' "$err" || true)"
+    if [ -z "$line" ]; then
+      cat "$err" >&2; rm -f "$idx" "$err"
+      die "cannot compute the work tree sha: git add -A failed above. A receipt keyed
+to the wrong tree verifies clean against any uncommitted change, so this stops here
+rather than writing one."
+    fi
+    line="${line#error: }"
+    excl+=(":(exclude)${line%%: can only add*}")
+  done
+  # Explicit, because the fallback is invisible: an exhausted loop leaves the index
+  # holding HEAD's tree, and `write-tree` on it succeeds and returns a plausible sha.
+  if [ "$ok" -ne 1 ]; then
+    rm -f "$idx" "$err"
+    die "cannot compute the work tree sha: too many unstageable paths in the work tree."
+  fi
+  # Excluding a *tracked* path is not the same trade: the index still holds HEAD's
+  # version of it, so a change to that file would not move the sha and the receipt
+  # would survive it. Untracked is the only case this is allowed to cover.
+  for e in ${excl[@]+"${excl[@]}"}; do
+    e="${e#:(exclude)}"
+    if git ls-files --error-unmatch -- "$e" >/dev/null 2>&1; then
+      rm -f "$idx"
+      die "cannot compute the work tree sha: git refuses to stage \"$e\", which is
+tracked. Excluding it would key the receipt to HEAD's copy of that file and hide
+any change to it, so this stops here."
+    fi
+  done
+  [ ${#excl[@]} -eq 0 ] || printf 'gate: %s unstageable path(s) excluded from the tree sha\n' "${#excl[@]}" >&2
+  rm -f "$err"
   tree="$(GIT_INDEX_FILE="$idx" git write-tree)"
   rm -f "$idx"
   printf '%s' "$tree"

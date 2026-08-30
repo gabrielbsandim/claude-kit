@@ -149,6 +149,56 @@ try:
     check("3c and names where it came from", "config reviewModel.standard" in out, out)
     write(root, ".claude/funnel.config.json", json.dumps(CFG))
 
+    # 5. The lens that reads outside the diff. It shares the "src" slice with
+    #    correctness, and it must still get a dispatch of its own: an agent handed
+    #    one prompt saying "read only the diff" and another saying "open these
+    #    files" follows the looser one.
+    OUTSIDE = {**CFG,
+               "lenses": {**CFG["lenses"],
+                          "consequences": {"slice": "src", "docs": [],
+                                           "readsOutsideDiff": True,
+                                           "codeTargets": ["src"]}},
+               "effort": {"standard": ["correctness", "tests", "claims", "consequences"]}}
+    write(root, "src/caller.ts", "import { answer } from './thing'\nexport const use = answer\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "a caller")
+    write(root, ".claude/funnel.config.json", json.dumps(OUTSIDE))
+    out = run(root, "--dispatches", "standard")
+    groups = dispatched(out)
+    check("5 it is not grouped into its slice",
+          not any("correctness" in g and "consequences" in g for g in groups), out)
+    check("5 it gets a dispatch of its own",
+          any(g.strip().startswith("consequences") for g in groups), out)
+    check("5 and the plan says why it is alone",
+          "alone: reads outside the diff" in out, out)
+    check("5 it is told to read the touched files whole",
+          "to be read whole and not as hunks" in out, out)
+    check("5 and the file the diff touched is on that list",
+          "src/thing.ts" in out, out)
+
+    # 5b. A file large enough to be prose is named as skipped rather than dropped:
+    #     a list with a silent gap in it is a list an agent goes and fills.
+    write(root, "src/thing.ts", "export const answer = 44\n")
+    write(root, "src/huge.ts", "// x\n" * 12000)
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "a large file")
+    out = run(root, "--dispatches", "standard")
+    check("5b the oversized file is named, not dropped",
+          re.search(r"src/huge\.ts\s+SKIPPED at \d+ bytes", out) is not None, out)
+    check("5b and the small ones are still listed with their size",
+          re.search(r"src/thing\.ts\s+\(\d+ bytes\)", out) is not None, out)
+
+    # 5c. A fix round skips it too when its slice did not move, on the same rule
+    #     every other lens follows.
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root,
+                          capture_output=True, text=True).stdout.strip()
+    out = run(root, "--dispatches", "standard", "--since", head)
+    check("5c an untouched fix round does not dispatch it",
+          not any("consequences" in g for g in dispatched(out)), out)
+    check("5c and says so by name",
+          "parts: consequences" in out and "touched nothing this lens reads" in out, out)
+    write(root, ".claude/funnel.config.json", json.dumps(CFG))
+
     # The first pass is the case that must not have learned this. Same tree, no
     # --since, and every slice goes out even though one of them is empty.
     write(root, ".claude/funnel.config.json",

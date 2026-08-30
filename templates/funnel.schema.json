@@ -172,6 +172,17 @@
               "type": "string"
             },
             "description": "Prose surfaces the claims lens checks for sentences the change falsified. `kit review` greps them for the declaration names and multi-digit literals the diff touched and hands over a candidate list, instead of the lens reading whole files."
+          },
+          "readsOutsideDiff": {
+            "type": "boolean",
+            "description": "This lens is allowed to open files the diff does not touch, and is dispatched alone rather than grouped into its slice, because that permission contradicts the reading discipline every other lens carries. Reserve it: the discipline is what makes a slice lens cheap."
+          },
+          "codeTargets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Where `kit review` greps for the callers of the declarations the diff touched, to hand a `readsOutsideDiff` lens a named file list instead of a codebase to sweep."
           }
         }
       }

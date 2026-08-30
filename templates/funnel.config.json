@@ -106,6 +106,14 @@
         "docs",
         "README.md"
       ]
+    },
+    "consequences": {
+      "slice": "src",
+      "docs": [],
+      "readsOutsideDiff": true,
+      "codeTargets": [
+        "src"
+      ]
     }
   },
   "effort": {
@@ -125,7 +133,8 @@
       "security",
       "tests",
       "surfaces",
-      "claims"
+      "claims",
+      "consequences"
     ]
   },
   "reviewModel": {

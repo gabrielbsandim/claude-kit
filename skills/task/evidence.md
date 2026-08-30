@@ -288,3 +288,68 @@ a paragraph. Measured on 2026-08-17: a report that read as six items was 1655
 characters and 4 source lines, and rendered as 19 lines in the user's terminal.
 100 characters is about one rendered line, so six items at 600 characters is one
 sentence each.
+
+## A receipt keyed to the wrong tree
+
+`kit gate` keys a receipt to the tree sha of the working directory, computed in a
+throwaway index as `git read-tree HEAD` then `git add -A` then `git write-tree`.
+`git add -A` refuses any path that is not a regular file, a symlink or a git
+directory, and one such path fails the whole add. `write-tree` then returns the
+tree already in the index, HEAD's, and nothing says so.
+
+Every receipt written after that verifies clean against **any** uncommitted change,
+which is the one thing a receipt exists to refuse. Found in obranova on 2026-08-30:
+three character devices in the repository root, `.bash_profile`, `.bashrc` and
+`.gitconfig`, each a bind mount over `/dev/null` created by the agent sandbox to
+deny reads, none of which exist outside it. The gate had been reporting
+`3 skipped by receipt` against `tree 41ef1b66`, which is `git rev-parse HEAD^{tree}`.
+
+```bash
+# The failure, if it ever returns HEAD's tree, is this equality.
+kit gate --receipts | head -1        # tree <working directory>
+git rev-parse HEAD^{tree}            # must differ whenever anything is uncommitted
+```
+
+The fix excludes exactly the paths git named, one per attempt because `git add -A`
+reports the first and aborts, and dies if the add fails for any other reason. A
+silent wrong answer here is worse than a stopped run, because the receipt is what
+a pre-push hook trusts when it decides not to run the suite.
+
+## Buying back the reading a slice lens is denied
+
+The reviewer discipline is what makes a slice lens cost about two dollars: it reads
+one already-written diff file and a named document list, and nothing else. The
+defects that survive it are the ones whose cause is in the diff and whose effect is
+not.
+
+Measured on pull requests 879 and 880, an outside reviewer reading whole files
+returned four findings each, eight of eight of that shape, none reached by any
+slice lens: a value hardcoded to `0` silencing a warning rendered two hundred lines
+lower in the same file, a `save` action validating a field the function it routes to
+ignores, a `\d+` regex against a `VARCHAR(32)` column, a release interval anchored
+to the newest tag so a failed release is skipped forever. That reviewer's own
+opening line was that it had read 84 files, including files the diff does not touch.
+
+So the permission is bought back for one lens and paid for with grep. On the merge
+of 880 the full-read list came to eight files and 126 KB after the two prose files
+over 40 KB were named as skipped, against the 340 KB reading them whole would have
+cost, and the caller list is ranked by how many of the exported names each file
+references. Unfiltered, that same diff yielded `result`, `hours`, `rate` and
+`order`, which rank `prisma/schema.prisma` first; exported only, it yields twelve
+names, one of them the `pickCostSnapshot` that was finding number two.
+
+## The push that runs the gates a second time
+
+A repository whose pre-push hook runs its own lint, types and suite runs them again
+on a tree `kit gate ship` has already proved. Measured in obranova on 2026-08-30
+against a clean `develop`: lint 101s, types 72s, suite 186s, so **359 seconds per
+push**, and a fix round pushes again. The hook's guard is one line, and it fails
+open, which is what makes it safe to add:
+
+```sh
+kit gate --verify ship >/dev/null 2>&1 && exit 0
+```
+
+No receipt, a tree that moved since one was written, or no `kit` on the path all
+exit non-zero, and the checks run exactly as before. A push by hand with no funnel
+behind it is that case.

@@ -95,6 +95,102 @@ claims_candidates() {
         done ) | sort -u | head -60
 }
 
+# The files the diff touches, for a lens that reads them whole rather than as
+# hunks. `git diff -U8` shows eight lines around a change, and the consequence of
+# a change is routinely further away than that inside the very same file: on pull
+# request 880 a value hardcoded to 0 silenced a warning rendered 200 lines below
+# it, inside a file every lens had already "read".
+changed_files() {
+  local spec range bytes
+  # The lens's own slice, not `all`: a lens whose slice already excludes the test
+  # tree should not spend its read budget on files another lens has the diff for.
+  spec="$("$CFG" get ".slices.\"$("$CFG" get ".lenses.\"$1\".slice")\"")"
+  range="$(slice_range "$spec")"
+  # Ranked by how much of each file the change rewrote, because the cap cuts
+  # somewhere and alphabetical order decides that by directory name.
+  ( cd "$REPO_ROOT" && eval "git diff --numstat $range" ) \
+    | awk '{ a=($1=="-")?0:$1; d=($2=="-")?0:$2; printf "%d\t%s\n", a+d, $3 }' \
+    | sort -rn | head -25 | cut -f2- \
+    | while IFS= read -r f; do
+        bytes=0
+        [ -f "$REPO_ROOT/$f" ] && bytes="$(wc -c <"$REPO_ROOT/$f")"
+        # A file this size is prose or a generated table, and reading it whole is
+        # the cost the claims lens exists to avoid paying: it gets grep-precomputed
+        # candidates for the same file instead. Naming the skip beats a silent one,
+        # because a lens told to read "every file below" and handed a list with a
+        # gap in it will go and open the gap.
+        if [ "$bytes" -gt 40000 ]; then
+          printf '%s   SKIPPED at %s bytes, the claims lens has this one\n' "$f" "$bytes"
+        else
+          printf '%s   (%s bytes)\n' "$f" "$bytes"
+        fi
+      done
+}
+
+reads_outside() {
+  case "$("$CFG" get ".lenses.\"$1\".readsOutsideDiff?" 2>/dev/null || true)" in
+    true) return 0 ;;
+    *)    return 1 ;;
+  esac
+}
+
+# The callers of what the diff changed. Every lens but this one is forbidden to
+# open a file the diff does not contain, and that discipline is what a slice lens
+# costs its price for. It is also what the diff cannot show: a default written to
+# silence a warning the caller still renders, an argument the new signature ignores,
+# a column narrower than the value the new code writes to it. Measured on pull
+# requests 879 and 880, eight of eight findings an outside reviewer would not let
+# through were of exactly this shape, and no slice lens had reached any of them.
+#
+# So the permission is granted once, and paid for with grep instead of a sweep:
+# the declarations the diff added, resolved to the files outside the diff that
+# name them. A list of files, capped, not a codebase.
+consumers_candidates() {
+  local spec range names changed targets excl
+  spec="$("$CFG" get '.slices.all')"
+  range="$(slice_range "$spec")"
+  targets="$("$CFG" get '.lenses.consequences.codeTargets[]?' | tr '\n' ' ')"
+  [ -n "${targets// /}" ] || return 0
+  changed="$( cd "$REPO_ROOT" && eval "git diff --name-only $range" | sort -u )"
+  # Exported declarations only, and every local `const result` drops out with them.
+  # Measured on the merge of pull request 880: the unfiltered form yielded 40 names,
+  # of which `result`, `hours`, `rate` and `order` matched most of the repository and
+  # ranked `prisma/schema.prisma` first; the exported form yielded 12, one of them
+  # the `pickCostSnapshot` that was finding number two on that pull request.
+  names="$( cd "$REPO_ROOT" && eval "git diff -U0 $range" \
+    | grep -E '^\+' | grep -v '^+++' \
+    | grep -oE 'export +(default +)?(async +)?(function|const|class|type|interface|enum) +[A-Za-z_][A-Za-z0-9_]{3,}' \
+    | awk '{print $NF}' | sort -u | head -30 )"
+  # A change that exports nothing new still has callers, so fall back to every
+  # declaration rather than returning an empty list and reading as "no consumers".
+  if [ -z "$names" ]; then
+    names="$( cd "$REPO_ROOT" && eval "git diff -U0 $range" \
+      | grep -E '^\+' | grep -v '^+++' \
+      | grep -oE '(function|class|type|interface|enum) +[A-Za-z_][A-Za-z0-9_]{5,}' \
+      | awk '{print $NF}' | sort -u | head -30 )"
+  fi
+  [ -n "$names" ] || return 0
+  excl="$(mktemp)"; printf '%s\n' "$changed" >"$excl"
+  # `|| true` for the same reason claims_candidates has it: a declaration nothing
+  # else references is the ordinary case, and under pipefail its grep would take
+  # the whole plan down mid-print.
+  # Ranked by how many of the changed declarations each file references, not
+  # alphabetically. A cap has to cut somewhere, and the file that uses five of them
+  # is the one whose behaviour the change is most likely to have altered; sorting by
+  # name instead spends the whole budget in whichever directory sorts first.
+  ( cd "$REPO_ROOT" && printf '%s\n' "$names" \
+      | while IFS= read -r t; do
+          [ -z "$t" ] && continue
+          # A name matching half the repository is a word, not a reference, and it
+          # would spend the whole cap on files that merely contain it.
+          hits="$(grep -rIlF --exclude-dir=node_modules -- "$t" $targets 2>/dev/null | sort -u || true)"
+          count="$(printf '%s\n' "$hits" | grep -c . || true)"
+          [ "$count" -eq 0 ] || [ "$count" -gt 15 ] || printf '%s\n' "$hits"
+        done ) | grep -vxF -f "$excl" | sort | uniq -c | sort -rn | head -25 \
+    | awk '{printf "%s   (%s of the changed names)\n", $2, $1}'
+  rm -f "$excl"
+}
+
 case "${1:-}" in
   --disjoint)
     a="${2:?}"; b="${3:?}"
@@ -136,8 +232,12 @@ case "${1:-}" in
     level="${2:?usage: review-package --dispatches <light|standard|deep>}"
     lenses="$("$CFG" get ".effort.\"$level\"[]?")"
     [ -n "$lenses" ] || die "no effort level \"$level\" in the config"
-    slices=""
+    slices="" solo=""
     for l in $lenses; do
+      # A lens allowed to read outside the diff cannot share a dispatch with one
+      # that is not: the two carry contradictory reading disciplines, and the
+      # looser one is the one an agent follows.
+      if reads_outside "$l"; then solo="$solo $l"; continue; fi
       s="$("$CFG" get ".lenses.\"$l\".slice")"
       printf '%s\n' "$slices" | grep -qxF "$s" || slices="$slices$s"$'\n'
     done
@@ -151,6 +251,10 @@ case "${1:-}" in
       group="" docs=""
       for l in $lenses; do
         [ "$("$CFG" get ".lenses.\"$l\".slice")" = "$s" ] || continue
+        # It names this slice, but it is dispatched alone below. Without this it
+        # would be listed here as well and reviewed twice, once under a discipline
+        # that contradicts its own.
+        reads_outside "$l" && continue
         group="$group $l"
         while IFS= read -r d; do
           [ -z "$d" ] && continue
@@ -194,6 +298,25 @@ case "${1:-}" in
           ;;
       esac
     done
+    for l in $solo; do
+      f="$(write_slice "$l")"
+      lines="$(grep -c '^[+-]' "$f" || true)"
+      if [ -n "$since" ] && [ "$lines" -eq 0 ]; then
+        printf '\nskipped     parts: %s\n' "$l"
+        printf '  the fix since %s touched nothing this lens reads\n' "${since:0:8}"
+        continue
+      fi
+      n=$((n + 1))
+      printf '\ndispatch %s   parts: %s   (alone: reads outside the diff)\n' "$n" "$l"
+      [ -n "$model" ] && printf '  model %s   (config reviewModel.%s; pass it, and pass nothing otherwise)\n' "$model" "$level"
+      printf '  diff  %s  (%s changed lines)\n' "$f" "$lines"
+      printf '  read  every file below in full, and nothing else outside the diff\n'
+      printf '  touched by the diff, to be read whole and not as hunks:\n'
+      changed_files "$l" | sed 's/^/    /'
+      printf '  callers outside the diff (grep-precomputed, ranked):\n'
+      c="$(consumers_candidates)"
+      if [ -n "$c" ]; then printf '%s\n' "$c" | sed 's/^/    /'; else printf '    none matched: nothing outside the diff references what it exports\n'; fi
+    done
     printf '\n%s dispatch(es), max %s concurrent\n' "$n" "$("$CFG" get .maxParallelAgents)"
     ;;
 
@@ -216,6 +339,15 @@ case "${1:-}" in
       printf 'prose candidates (grep-precomputed, verify each against the code as committed):\n'
       c="$(claims_candidates)"
       if [ -n "$c" ]; then printf '%s\n' "$c"; else printf '  none matched\n'; fi
+    fi
+    if reads_outside "$lens"; then
+      printf 'read in full (not as hunks), because the consequence is routinely\n'
+      printf 'further from the change than the diff context reaches:\n'
+      changed_files "$lens" | sed 's/^/  /'
+      printf 'callers outside the diff (grep-precomputed, ranked). Open these, and\n'
+      printf 'nothing else outside the diff:\n'
+      c="$(consumers_candidates)"
+      if [ -n "$c" ]; then printf '%s\n' "$c" | sed 's/^/  /'; else printf '  none matched: nothing outside the diff references what it exports\n'; fi
     fi
     ;;
 esac

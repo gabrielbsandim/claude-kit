@@ -94,7 +94,9 @@ Put these in every review dispatch:
   file. Do not open the file again unless a hunk is cut off, and do not run
   `git` at all.
 - Do not sweep the codebase. Look outside the diff only for a **named** risk,
-  one focused check, naming both the risk and the check.
+  one focused check, naming both the risk and the check. The one exception is a
+  dispatch whose plan line says *reads outside the diff*, which arrives with the
+  list of files it may open and may open no others.
 - Do not run the suite. The implementer already did. A focused test only for a
   specific doubt.
 - **A reviewer does not dispatch subagents.** A reviewer spawned by a reviewer
@@ -124,6 +126,41 @@ change **falsified**, not the prose it asserts. `kit review` hands this lens a
 **grep-precomputed candidate list** instead of two 15 KB files to read, built from
 the declaration names and multi-digit literals the diff touched. Candidates, not
 findings: each is verified against the code.
+
+### The lens that is allowed to read outside the diff
+
+Every rule above makes a reviewer cheap by refusing it the codebase, and that
+refusal has a cost of its own: the defects it cannot see are the ones whose cause
+is in the diff and whose effect is not. Measured on pull requests 879 and 880, an
+outside reviewer reading whole files returned **four findings each**, eight of
+eight of that shape, and no slice lens had reached any of them: a value hardcoded
+to `0` that silenced a warning rendered two hundred lines lower in the same file,
+a `save` action validating a field the function it routes to ignores, a `\d+`
+regex against a `VARCHAR(32)` column, an interval anchored to the newest tag so a
+failed release is skipped forever.
+
+So one lens buys the permission back, `consequences`, and pays for it with grep
+rather than with a sweep. It is declared `readsOutsideDiff` and **dispatched
+alone**: an agent given one prompt that says "read only the diff" and another that
+says "open these files" follows the looser one. `kit review` hands it two lists,
+both precomputed, and it may open nothing else:
+
+- **the files the diff touched, to be read whole and not as hunks.** Ranked by how
+  much of each the change rewrote, capped at 25, and a file over 40 KB is named as
+  skipped rather than dropped, because a list with a silent gap in it is a list an
+  agent goes and fills. `git diff -U8` is eight lines of context, and the
+  consequence of a change is routinely further away than that *inside the same
+  file*.
+- **the callers outside the diff**, from the declarations the diff exports,
+  ranked by how many of them each file references. Exported only: the unfiltered
+  form on 880 yielded `result`, `hours` and `rate`, which rank the schema first
+  and spend the whole budget on files that merely contain the word.
+
+Its question is not "is this line correct". It is: **what else already depended on
+what this changed, and does it still hold?** Signature, ordering, a default now
+written where a caller reads it, a column narrower than the value, a branch made
+unreachable, a warning silenced. A finding here still needs a named consumer and a
+concrete failure, and it grades on the same rubric as any other lens.
 
 ### Rounds are the expensive unit
 
