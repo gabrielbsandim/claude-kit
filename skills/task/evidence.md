@@ -169,12 +169,36 @@ no prose at all under the same counting rules: twelve findings in rows measure 5
 characters, and the same twelve as paragraphs measure past 3000. That is what makes
 the shape a table with a few sentences under it, rather than a shorter essay.
 
+## One invariant, found three times
+
+Acceptance criteria describe what the feature does, and what the feature does is not
+where the rounds go. In the run this funnel was measured on, three of four rounds
+went to one rule nobody had written down: the spend was never recorded, then it
+still leaked when the turn threw, then the cap rounded every sub-cent row to zero
+and never moved at all. One invariant, discovered three times, at 33, 44 and 70
+minutes.
+
+An invariant satisfied at write time costs nothing. The same invariant found in
+review has cost between 30 and 70 minutes every time it was found.
+
+## Why the dispatch is grouped by slice
+
+Fan-out per lens was the shape this stage started in, and it was measured and
+removed: two reviewer prompts fused into one that returns "Part 1 spec conformity,
+Part 2 code quality" from a single read of the same diff ran twice as fast for
+about half the tokens. So the parts share one read, and independent contexts are
+kept where the material actually differs, which is the slice.
+
+On the repository this was built against, a `deep` review goes from 7 dispatches
+reading 4,256 diff lines and 517 KB of documents to 4 dispatches reading 2,043
+lines and 117 KB. Reproduce with `kit review deep` on any branch.
+
 ## An empty slice on a fix round
 
 A reviewer sent at a diff with nothing in it still pays a full cold context to
-report that there is nothing to report. Until 0.10.0 `kit review <level> --since
-<sha>` wrote every slice for the fix range and printed a dispatch for each one
-regardless of whether the fix had touched it, so a fix confined to `src` re-sent the
+report that there is nothing to report. Until 0.10.0 a `--since` round wrote every
+slice for the fix range and printed a dispatch for each one regardless of whether
+the fix had touched it, so a fix confined to `src` re-sent the
 tests and surfaces lenses every round.
 
 The scale it operates at is the fan-out itself: over thirteen days the reviewer ran

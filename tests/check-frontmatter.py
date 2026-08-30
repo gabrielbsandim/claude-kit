@@ -98,10 +98,11 @@ if os.path.exists(skill):
             check("SKILL.md agrees that %s is %s" % (name, declared),
                   row.group(1) == declared,
                   "frontmatter says %r, the table says %r" % (declared, row.group(1)))
-    # Whitespace-normalised: the rule is a wrapped paragraph, and a line break
-    # landing inside the sentence is not the rule going missing.
+    # Whitespace-normalised and case-folded: the rule is a wrapped paragraph, so a
+    # line break inside the sentence is not the rule going missing, and neither is
+    # the sentence being reflowed to start with it.
     check("SKILL.md forbids a hand-written model",
-          "never write a `model` field into a dispatch" in " ".join(body.split()),
+          "never write a `model` field into a dispatch" in " ".join(body.split()).lower(),
           "the rule that keeps the frontmatter binding is gone")
 
 print("\n%d ok, %d failed" % (len(PASS), len(FAIL)))

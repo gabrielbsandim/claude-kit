@@ -69,15 +69,12 @@ it is the one you can fix without stopping (`evidence.md` &middot; *Stale kit*).
   inside the task funnel; do not invoke the task or investigate skills
   yourself_. A dispatch that leans on "as discussed" produces a guess, then a
   redo, which is the most expensive token there is.
-- **The model of a dispatch is not yours to choose.** Every agent declares its
-  model in its own frontmatter, and a `model` field in the Agent input silently
-  overrides it. Measured over the first thirteen days of funnel use: **101 of 625
-  dispatches carried `model: "opus"` written by the orchestrator**, ten of them to
-  the test writer, whose frontmatter says `sonnet` and whose Opus executions cost
-  US$ 10.87 each against US$ 3.03 on Sonnet. So: never write a `model` field into
-  a dispatch. The only exception is a `model:` line `kit review` printed for you,
-  and it prints one only when the config asks for an escalation (`evidence.md`
-  &middot; *The model of a dispatch*).
+- **Never write a `model` field into a dispatch.** Every agent declares its model
+  in its own frontmatter and a `model` in the Agent input silently overrides it:
+  measured over thirteen days, **101 of 625 dispatches carried one** the
+  orchestrator wrote itself, at up to 3.6 times the cost per execution. The only
+  exception is a `model:` line `kit review` printed, which it prints only when the
+  config asks for an escalation (`evidence.md` &middot; *The model of a dispatch*).
 - **The writer never approves their own work.** Review runs in separate,
   clean-context agents that did not implement.
 - **Never merge.** The funnel ends at the draft pull request.
@@ -122,20 +119,15 @@ it is the one you can fix without stopping (`evidence.md` &middot; *Stale kit*).
   verdicts: **HOLD** below 120k tokens in context, **AT THE NEXT BOUNDARY** from
   120k to 300k, **NOW** above 300k, and **LATE** below 15% of the window free,
   where the automatic compaction picks the cut point instead of you. Since 0.10.0
-  the first three are token counts rather than percentages, because a 300k prefix
-  costs the same to re-read on a 200k window and a 1M one, and on 1M the old
-  percentages answered HOLD for a session that had peaked at 507k.
+  the first three are token counts, not percentages, and they have arithmetic
+  behind them: compacting at 250k repays itself in about **3 turns** of cheaper
+  reads, and `kit context` prints that number for the size you are at.
 
-  The end of a unit of work is still the trigger, and the band is only how urgent
-  the next boundary is. What changed is that the bands now have arithmetic behind
-  them: a turn re-reads its whole prefix at US$ 0.50 per million, and one
-  compaction was measured at about US$ 0.30 more than a normal turn, so compacting
-  at 250k repays itself in about **3 turns** and at 400k in under 2. `kit context`
-  prints that number for the size you are actually at. Compacting mid-task still
-  trades a dollar for file re-reads that come back worse, which is why NOW means
-  the next boundary you reach and not this line of the diff. One case ignores the
-  band entirely: **before a long pause**, where a large prefix is the only place
-  one request costs five dollars (`evidence.md` &middot; *A pause is the expensive
+  The end of a unit of work is still the trigger. NOW means the next boundary you
+  reach and not this line of the diff, because compacting mid-task still trades a
+  dollar for file re-reads that come back worse. One case ignores the band
+  entirely: **before a long pause**, where a large prefix is the only place one
+  request costs five dollars (`evidence.md` &middot; *A pause is the expensive
   moment*).
 
 ### Effort level, declared by the spec in stage 1
@@ -236,14 +228,8 @@ the standing instructions in these files are lost:
 | 4 | `claude-kit:funnel-reviewer` | sonnet | the reading discipline, the grading rubric, CONFIRMED against PLAUSIBLE |
 | 4 | `claude-kit:funnel-screen-lens` | inherit | report only what you observed, the three-source standard, and NOT PROVEN is not a pass |
 
-The Model column is the frontmatter, printed here so a dispatch never has to guess
-it and never has to state it. Two stages are on Sonnet because their input is
-already scoped for them: the test writer gets the spec and the list of files that
-changed, and the reviewer gets a diff file that is already written plus the exact
-document list. The two on `inherit` are the two that read an open codebase to
-decide something, which is where the stronger model earns its price. Measured over
-thirteen days: the reviewer ran 310 times at US$ 2.16 each, so it is the fan-out,
-not the depth, that this column is about.
+The Model column is the frontmatter, printed so a dispatch never guesses it and
+never states it (`evidence.md` &middot; *The model of a dispatch*).
 
 The screen lens runs only when the change touched a screen and `browser.enabled`
 is true. It is the only agent here that finds out rather than reasons, which is
@@ -299,13 +285,10 @@ against that number.
 ### Invariants, not only criteria
 
 Acceptance criteria describe what the feature does, and what the feature does is
-not where the rounds go. In the run this funnel was measured on, three of four
-rounds went to one rule nobody had written down: the spend was never recorded,
-then it still leaked when the turn threw, then the cap rounded every sub-cent row
-to zero and never moved at all. One invariant, discovered three times, at 33, 44
-and 70 minutes.
-
-So the spec names them up front and the implementer answers them in code:
+not where the rounds go: on the run this funnel was measured on, three of four
+rounds went to one rule nobody had written down (`evidence.md` &middot; *One
+invariant, found three times*). So the spec names them up front and the
+implementer answers them in code:
 
 | Scope in the spec     | The invariant it carries                                                                                                              |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
@@ -313,9 +296,6 @@ So the spec names them up front and the implementer answers them in code:
 | **External call**     | every new call has a timeout and a `catch`; the `catch` logs what was lost, because a silent `return { status: 'failed' }` is no handler |
 | **Untrusted inbound** | the response code is chosen for the sender, not for us; a path that always answers 200 must not be the path that swallows a retry      |
 | **Prose it touches**  | any comment, document or knowledge entry the change **falsifies** moves in the same commit, not only the ones it adds                  |
-
-An invariant satisfied at write time costs nothing. The same invariant found in
-review has cost between 30 and 70 minutes every time it was found.
 
 **GATE**: criteria measurable, scope closed. Too big for one reviewable pull
 request → present the slices and stop.
@@ -360,15 +340,10 @@ implement_fix_round` instead, which is the incremental form. The full suite is
 paid once at stage 5, off a receipt.
 
 **One implementer per round, carrying every CONFIRMED finding of that round.** Not
-one per finding, and not one per lens that raised one. A second implementer on the
-same branch reads the same repository from an empty context to fix a second line in
-a file the first one already had open, which is the read paid twice for no
-independence in return: the fix is not a judgement anybody wanted a fresh opinion
-on. Measured over thirteen days, the implementer ran **101 times for about 40
-tasks**, which is 2.5 implementations per task on a funnel whose `maxRounds` is 2
-(`evidence.md` &middot; *An empty slice on a fix round*).
-If two CONFIRMED findings genuinely conflict, that is the spec having been wrong,
-which stage 4's own closing rule already covers: say so and stop.
+one per finding: a second implementer on the same branch pays a second cold read of
+the same repository for no independence in return, and over thirteen days this
+stage ran **101 times for about 40 tasks** (`evidence.md` &middot; *An empty slice on
+a fix round*).
 
 **A red gate is not automatically the implementer's defect.** `kit gate` prints
 a `flake` line when a failing file is on the config's quarantine list, and says
@@ -410,20 +385,14 @@ slice as a **numbered part of one contract**, with the diff already written to a
 file and the exact document list for the group. Give each block, verbatim, to its own
 `funnel-reviewer`.
 
-There is also `workflows/review-fanout.js`, which runs this stage as a deterministic
-fan-out and adds a verifier per finding whose instruction is to refute it. Use it when the
-review is the whole job and nothing needs asking; use the dispatches above when you are
-inside a task and want to keep the findings in your own context.
+There is also `workflows/review-fanout.js`, a deterministic fan-out that adds a
+verifier per finding whose instruction is to refute it. Use it when the review is
+the whole job; use the dispatches above when you are inside a task.
 
 Fan-out per lens is not a neutral choice, it is the thing that was measured and
-removed: two reviewer prompts fused into one that returns "Part 1 spec
-conformity, Part 2 code quality" from a single read of the same diff ran twice as
-fast for about half the tokens. Grouping by slice keeps independent contexts
-exactly where the material differs and stops paying for the same read twice.
-
-On the repository this was built against, a `deep` review goes from 7 dispatches
-reading 4,256 diff lines and 517 KB of documents to 4 dispatches reading 2,043
-lines and 117 KB. Reproduce with `kit review deep` on any branch.
+removed: grouping by slice keeps independent contexts exactly where the material
+differs and stops paying for the same read twice (`evidence.md` &middot; *Why the
+dispatch is grouped by slice*).
 
 ### What stage 4 owes you before the dispatches go out
 
@@ -432,13 +401,10 @@ carries the browser half, what may actually run at once, the reviewer discipline
 two lenses most repos are missing, and the grading rubric. What follows is only what
 a skipped read must not lose:
 
-- **The browser half runs when all three hold**, and is skipped silently otherwise:
-  `browser.enabled` is true, the effort level is in `browser.efforts`, and
-  `kit screens` returned at least one route under `visit`. **Exactly one screen lens
-  at a time**, because the browser is shared and two of them corrupt each other's reads.
-- **You bring the app up, because the lens has no `Bash`.** A dispatch sent at a port
-  with nothing on it returns findings about a connection error, and a port answering
-  is not proof it is your build.
+- **The browser half runs when `browser.enabled` is true, the effort level is in
+  `browser.efforts`, and `kit screens` returned a route**, and is skipped silently
+  otherwise. **Exactly one screen lens at a time**, and you bring the app up,
+  because the lens has no `Bash`.
 - **The rubric travels in every dispatch**: Critical is data loss, security, money or
   production; Important is anything that makes the task untrustworthy until fixed;
   Minor never enters the loop and goes to the deferred ledger.
@@ -479,17 +445,11 @@ a skipped read must not lose:
    repo template's own sections; what to check; what is knowingly left out and
    who owns it; and the link to the ledger comment.
 
-4. The findings ledger, right after the URL exists. **It has its own budget, and
-   it is checked the same way the body is**: write it to a file, run `kit ledger
-   <file>`, then `gh pr comment <n> --body-file <file>`. At most **1000
-   characters of prose** and **350 per section**, which is half the body's,
-   because the ledger is the second thing read and only by somebody who already
-   decided to. One row per finding in a table, which costs no prose at all;
-   `review.md` has the columns. Measured on 2026-08-29, the ledgers on 874, 877
-   and 880 ran 4515, 4432 and 3734 characters of prose, each more than twice what
-   the body beside it was allowed. A follow-up comment answering a review is a
-   ledger too and runs the same command (`evidence.md` &middot; *Why the ledger has a
-   budget*).
+4. The findings ledger, right after the URL exists. It has its own budget and it
+   is checked: run `kit ledger` on the file, then post it with
+   `gh pr comment --body-file`. **1000 characters of prose, 350 per section**, and
+   one row per finding in a table, which costs no prose at all. `review.md` has
+   the columns; a follow-up answering a review is a ledger too.
 5. `kit board in_review --issue <issue>`, after the pull request URL exists.
 6. Never `done`. The funnel does not merge, and the tracker's own automation
    owns that column.
@@ -538,6 +498,5 @@ done without lines 3 and 4.
 Reconstructed by timestamp on a real 5h35 task, half the clock was the human, and of
 the part the funnel controls **every test and lint command together was 11%**. So
 nothing here trims a check: the levers are the number of rounds, what each dispatch
-reads, and not running the same gate twice. Anything in this document that trims a
-check is trimming the cheap thing. The phase table is in `evidence.md`, under
-*Where the 5h35 went*.
+reads, and not running the same gate twice (`evidence.md` &middot; *Where the 5h35
+went*).

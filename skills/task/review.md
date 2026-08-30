@@ -194,9 +194,9 @@ diff only. A full re-read is warranted only when the fix moved a contract, a
 signature, a route, a schema, an order of operations, and then only for the
 lenses that contract touches.
 
-**A slice the fix never touched is not dispatched at all.** `kit review <level>
---since <sha>` prints `skipped` for it and names the slice, and that line is the
-whole instruction: do not send it, do not send it with an apology in the prompt. A
+**A slice the fix never touched is not dispatched at all.** A `--since` round
+prints `skipped` for it and names the slice, and that line is the whole
+instruction: do not send it, do not send it with an apology in the prompt. A
 reviewer at an empty diff still pays a full cold context to report that there is
 nothing to report, and a fix that touched only `src` was re-dispatching the tests
 and surfaces slices every round. The first round never skips, because there an
