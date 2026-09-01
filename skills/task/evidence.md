@@ -216,6 +216,34 @@ second implementer on the same branch reads the same repository from an empty
 context to fix a second line in a file the first one already had open, and the fix
 is not a judgement anybody wanted a fresh opinion on.
 
+## What a second round returns
+
+Two tasks, both `standard`, both at `maxRounds` 2, both with a real fix between the
+rounds, so the second round had something to verify and a fresh diff to read. It
+returned **13 findings, 0 Critical, 0 Important**, and four of them changed a line:
+
+| Task | Round 2 findings | Changed a line | What those were |
+| --- | --- | --- | --- |
+| 908 | 6 | 2 | a documented rule the fix falsified, a test comment naming the gate it had replaced |
+| 909 | 7 | 2 | a comment the fix left overstated, a round 1 number the round itself falsified |
+
+Not one of the four was a code defect. Every code finding a second round raised was
+deferred, which is the outcome a Minor on a fix round reliably has: the first round
+already read that code cold at the width the effort level bought, so what is left
+for the second is the prose the fix moved and whether the fix worked.
+
+Hence the severity floor, and hence the exception carved into it. Dropping every
+new Minor would have dropped all four of the findings that were worth having, since
+none of them was graded above Minor; dropping every new Minor **except prose the
+fix falsified** keeps all four and drops the nine that were deferred on sight.
+
+The floor removes a report, not a dispatch. On 909 the second round sent four
+lenses for 1,606 seconds of agent time and added 517 seconds of wall clock, the
+longest of the four, and that arithmetic does not move. What moves is what each
+lens spends its context hunting for once breadth stops being the thing that makes
+a report look complete, and the ledger rows and decision sentences downstream of
+it.
+
 ## The model of a dispatch
 
 An agent declares its model in its own frontmatter, and a `model` field in the Agent

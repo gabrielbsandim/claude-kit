@@ -240,6 +240,16 @@ and surfaces slices every round. The first round never skips, because there an
 empty slice is a fact worth having stated (`evidence.md` &middot; *An empty slice on
 a fix round*).
 
+**A new Minor on a fix round is not reported.** What the round owes is `ADDRESSED`
+or `NOT ADDRESSED` per finding it was sent, plus anything new it grades Critical or
+Important, plus one thing that is not a severity at all: **prose the fix
+falsified**, a comment, a document or a knowledge entry the fix itself made untrue.
+That one is reported whatever its severity, because the fix introduced it. Anything
+else new and Minor is dropped, not deferred: a deferred Minor buys a ledger row and
+a decision sentence for work nobody is going to do. Measured across two second
+rounds, 13 findings, none above Minor, and the only four that changed a line were
+prose (`evidence.md` &middot; *What a second round returns*).
+
 Cap at `maxRounds`, and **at the cap every open finding gets a written
 decision**. Silent discard is prohibited. A round whose fix is larger than the
 original commit is not a round, it is the spec having been wrong: say so and

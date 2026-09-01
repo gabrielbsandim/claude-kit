@@ -60,6 +60,15 @@ settles it, then report new breakage **inside the fix diff only**. Do not
 re-review the branch. Ask for a full re-read only when the fix moved a contract:
 a signature, a route, a schema, an order of operations.
 
+**A new Minor is out of scope here.** Report new breakage graded Critical or
+Important, and one thing that is not a severity at all: prose the fix falsified, a
+comment, a document or a knowledge entry the fix itself made untrue. That one goes
+in whatever its severity, because the fix introduced it. Anything else you would
+have graded Minor, leave out rather than defer. The first round already read this
+code cold at the width the effort level bought, and measured across two second
+rounds, every new Minor except the falsified prose was deferred on sight: 13
+findings, 4 worth a line, all 4 prose.
+
 ## Return
 
 ```

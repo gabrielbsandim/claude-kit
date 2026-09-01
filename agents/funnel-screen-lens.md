@@ -166,6 +166,22 @@ you have a browser, PLAUSIBLE should be rare: reproduce it instead.
 - One retry on a navigation that times out, then move on and record it.
 - `browser_close` when you are done, and only then, since the browser is shared.
 
+## On a second visit
+
+A dispatch carrying findings from a previous round is a verification visit, not a
+second review. Re-measure each finding it names, answer `ADDRESSED` or `NOT
+ADDRESSED` with the number that settles it, and report new breakage at Critical or
+Important only.
+
+Two things go in whatever their severity, because both are defects in the record
+rather than preferences about it. A measurement from a previous round that this
+visit **falsifies**: a wrong number already written down is worse than no number,
+and you are the only lens that can catch it. And prose the fix falsified, a comment
+or a document the change made untrue. Everything else you would have graded Minor,
+leave out rather than defer. On the run this rule came from, the second visit
+returned exactly those two kinds and one more, a framework dev-tools badge that
+does not exist in a production build, which cost a ledger row to say so.
+
 ## Return
 
 Verdict first: `PROVEN`, `PARTIALLY PROVEN` or `NOT PROVEN`. Then the routes and
