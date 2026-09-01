@@ -272,6 +272,20 @@ stage, commit, and go to **stage 5**. Stages 2, 3 and 4 do not run; every step i
 the two-lane table does. Do not re-dispatch triage to get a different answer, which
 is US$ 2.46 spent to disagree with the first one.
 
+`NEEDS_DECISION` answered by an investigation → **stage 1 does not run again.**
+The ordinary shape of that answer is: triage stops, `/investigate` measures what
+the decision turned on, the finding is written to the issue, and one slice of it
+becomes a child issue. That child arrives with a file scope, acceptance criteria
+and evidence that were **measured** rather than reasoned, which is more than
+triage returns, so re-dispatching triage against it buys a second opinion about a
+question already settled with numbers. Write the spec from the investigation
+comment and go to stage 2. Measured on issue 910: the second triage cost 6.1
+minutes of agent time and changed one number in the issue body, which a `grep`
+would have caught (`evidence.md` &middot; *Paying triage twice*).
+
+The exception is the pre-flight, not the spec: run stage 0 against the child's
+number, because a branch or a pull request may exist for it.
+
 `PROCEED` with no issue yet → open one the way the pipeline document says, and
 continue with its number. The funnel needs it: branch, worktree, pull request
 body and board move are all named after it. Then re-run the stage 0 pre-flight
@@ -402,9 +416,15 @@ a skipped read must not lose:
   `browser.efforts`, and `kit screens` returned a route**, and is skipped silently
   otherwise. **Exactly one screen lens at a time**, and you bring the app up,
   because the lens has no `Bash`.
-- **The rubric travels in every dispatch**: Critical is data loss, security, money or
-  production; Important is anything that makes the task untrustworthy until fixed;
-  Minor never enters the loop and goes to the deferred ledger.
+- **The rubric does not travel in the dispatch, because the agent already carries
+  it.** `agents/funnel-reviewer.md` holds the reading discipline, the
+  Critical/Important/Minor rubric, CONFIRMED against PLAUSIBLE and the return
+  shape, and `funnel-screen-lens.md` holds its own. What the dispatch adds is this
+  task's half and nothing else: what the change is for, the acceptance criteria,
+  and what was deliberately left out. `kit review` prints that instruction above
+  the blocks, because the mistake is made while writing the prompt and this output
+  is the only thing read at that moment (`evidence.md` &middot; *A dispatch that
+  restates the agent*).
 - **A fix round dispatches only the slices the fix touched.** `--since` prints
   `skipped` for the others and names them; that line is the whole instruction
   (`evidence.md` &middot; *An empty slice on a fix round*).

@@ -181,6 +181,60 @@ minutes.
 An invariant satisfied at write time costs nothing. The same invariant found in
 review has cost between 30 and 70 minutes every time it was found.
 
+## Where the 3h12 went
+
+A second reconstruction, on issue 910, whose delivered diff is three files and 296
+insertions. Total wall clock **192 minutes**. It divides differently from the 5h35
+run below, and the difference is the whole point:
+
+| Block | Minutes |
+| --- | --- |
+| 8 agent dispatches, summed from their own durations | 68.6 |
+| `kit gate ship`, the only gate the orchestrator ran itself | 4.8 |
+| Orchestrator turns | 118.6 |
+
+The agents are not where the time goes. **The orchestrator is 62% of the clock**,
+and on the 5h35 run that share was invisible because it was counted as "the
+human". Every lever below is aimed there, and none of them trims a check.
+
+## A dispatch that restates the agent
+
+`agents/funnel-reviewer.md` is 86 lines (`wc -l`), and they hold the reading
+discipline, the Critical/Important/Minor rubric, CONFIRMED against PLAUSIBLE, and
+the exact return format. On the 910 run all four of those were **written again**,
+by hand, into each of four review dispatches. The agent had them the whole time,
+so the restatement changed no behaviour and no finding.
+
+It was not carelessness. `SKILL.md` said, in its own stage 4 bullets, *the rubric
+travels in every dispatch*, which is a direct instruction to duplicate a file the
+funnel already loads. The bullet is the defect and it now says the opposite.
+
+The fix is not a rule to remember. `kit review --dispatches` prints the
+instruction above the blocks it prints, because the mistake is made in the seconds
+between reading that output and writing the prompt, and that output is the only
+thing being read at that moment.
+
+## Paying triage twice
+
+Triage on issue 906 returned `NEEDS_DECISION` in **5.7 minutes**. An investigation
+then measured the four status codes that the decision turned on, posted them to the
+issue, and one slice of the finding became issue 910. Triage was then dispatched
+again, against 910, for **6.1 minutes**.
+
+What the second triage returned that the investigation had not: one number. The
+issue body said `protectedRoutes` held 17 prefixes; it held 14. That is a `grep -c`
+away:
+
+```bash
+sed -n '/^const protectedRoutes/,/^]/p' src/middleware.ts | grep -c "^  '"
+```
+
+A child issue born from an investigation arrives with a file scope, acceptance
+criteria and evidence that were measured rather than reasoned. Triage returns the
+same fields, reasoned. Running it there is a second opinion on a question already
+settled with numbers, so stage 1 does not run and stage 0 still does, because a
+branch may exist for the child.
+
 ## Why the dispatch is grouped by slice
 
 Fan-out per lens was the shape this stage started in, and it was measured and

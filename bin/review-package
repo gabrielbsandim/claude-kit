@@ -245,6 +245,18 @@ case "${1:-}" in
     case "$model" in null|"") model="" ;; esac
     n=0
     printf 'effort %s%s\n' "$level" "${since:+, fix round since ${since:0:8}}"
+    # What the orchestrator must not write. The reading discipline, the grading
+    # rubric, CONFIRMED against PLAUSIBLE and the return shape are all in
+    # `agents/funnel-reviewer.md`, so a dispatch that restates them pays for
+    # prompt that changes no behaviour. Measured on pull request 911: four
+    # dispatches of 60 to 100 lines each, about 35 lines per dispatch already
+    # carried by the agent. It is printed here and not left to memory because
+    # the mistake is made at the moment of writing the prompt, which is this
+    # output's only reader.
+    printf '\nsend    each block below verbatim, plus only this task'"'"'s half: what the\n'
+    printf '        change is for, the acceptance criteria, and what was deliberately\n'
+    printf '        left out. The agent already carries the reading discipline, the\n'
+    printf '        rubric, CONFIRMED against PLAUSIBLE and the return format.\n'
     for s in $slices; do
       [ -z "$s" ] && continue
       n=$((n + 1))
