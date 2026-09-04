@@ -18,8 +18,12 @@ Registered for Write, Edit and Bash. Bash is where 4 lives; the other three are
 edits.
 """
 import json
+import os
 import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import kit_paths  # noqa: E402  (needs the path above; the hook runs as a script)
 
 TEST_PATH = re.compile(r"(^|/)(tests?|__tests__|spec)/|\.(test|spec)\.[jt]sx?$|_test\.(py|go)$|test_[^/]+\.py$")
 
@@ -52,6 +56,10 @@ def block(message: str) -> int:
 
 
 def check_edit(path: str, new_text: str, old_text: str) -> int:
+    # A test that asserts on a literal has to contain it. See hooks/kit_paths.py.
+    if kit_paths.is_own_test(path):
+        return 0
+
     if NO_VERIFY.search(new_text):
         return block(
             "Blocked: --no-verify in a file. The pre-push hook is a gate, not an obstacle."
@@ -88,11 +96,8 @@ def check_edit(path: str, new_text: str, old_text: str) -> int:
     return 0
 
 
-def main() -> int:
-    try:
-        payload = json.load(sys.stdin)
-    except Exception:
-        return 0
+def check(payload: dict) -> int:
+    """The guard itself, over an already-parsed payload. See hooks/guards.py."""
     tool = payload.get("tool_name") or ""
     args = payload.get("tool_input") or {}
 
@@ -126,6 +131,14 @@ def main() -> int:
         return check_edit(path, new_text, old_text)
 
     return 0
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except Exception:
+        return 0
+    return check(payload)
 
 
 if __name__ == "__main__":

@@ -90,11 +90,8 @@ def body_from(cmd):
     return None, None
 
 
-def main() -> int:
-    try:
-        payload = json.load(sys.stdin)
-    except Exception:
-        return 0
+def check(payload: dict) -> int:
+    """The guard itself, over an already-parsed payload. See hooks/guards.py."""
     cmd = (payload.get("tool_input") or {}).get("command") or ""
     if not cmd or not CREATE.search(cmd):
         return 0
@@ -137,6 +134,14 @@ def main() -> int:
     )
     sys.stderr.write("\n".join(lines) + "\n")
     return 2
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except Exception:
+        return 0
+    return check(payload)
 
 
 if __name__ == "__main__":

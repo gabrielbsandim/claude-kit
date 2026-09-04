@@ -1,34 +1,26 @@
 {
-  "description": "Three guards the funnel depends on: secrets never reach a transcript, a green suite cannot be faked, and the pull request body stays under the budget the skill asks for and nobody checked. The em dash hook ships alongside but is not registered, because it is a house style rather than a correctness property.",
+  "description": "Three guards the funnel depends on: secrets never reach a transcript, a green suite cannot be faked, and the pull request body stays under the budget the skill asks for and nobody checked. All three run in one interpreter through hooks/guards.py, which prefilters by substring before importing any of them: registered separately they spent three interpreter startups, measured at 13 ms each, on every Bash call to answer no. The em dash hook rides the same dispatcher but stays opt-in behind KIT_NO_EM_DASH, because it is a house style rather than a correctness property.",
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|Write|Edit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
-            "timeout": 10,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/env-guard.py\""
-          },
-          {
-            "type": "command",
-            "timeout": 10,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/protect-tests.py\""
-          },
-          {
-            "type": "command",
-            "timeout": 10,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pr-body-gate.py\""
+            "timeout": 15,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/guards.py\""
           }
         ]
-      },
+      }
+    ],
+    "PostToolUse": [
       {
         "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
             "timeout": 15,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/protect-tests.py\""
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/guards.py\""
           }
         ]
       }

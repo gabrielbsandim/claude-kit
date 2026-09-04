@@ -29,6 +29,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import kit_paths  # noqa: E402  (needs the path above; the hook runs as a script)
+
 DASH = "\u2014"  # escaped on purpose: this file must not contain the literal
 # Empty by default: the rule is absolute. NO_EM_DASH_EXEMPT loosens it per machine.
 EXEMPT = [p for p in (os.environ.get("NO_EM_DASH_EXEMPT") or "").split(":") if p]
@@ -46,14 +49,14 @@ def new_text(tool_input: dict) -> str:
     return ""
 
 
-def main() -> int:
-    try:
-        payload = json.load(sys.stdin)
-    except Exception:
-        return 0
+def check(payload: dict) -> int:
+    """The check itself, over an already-parsed payload. See hooks/guards.py."""
     tool_input = payload.get("tool_input") or {}
     path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
     if not path or any(re.search(p, path) for p in EXEMPT):
+        return 0
+    # A test that asserts on the character has to contain it. See kit_paths.py.
+    if kit_paths.is_own_test(path):
         return 0
     text = new_text(tool_input)
     count = text.count(DASH)
@@ -68,6 +71,14 @@ def main() -> int:
         + "\n"
     )
     return 2
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except Exception:
+        return 0
+    return check(payload)
 
 
 if __name__ == "__main__":

@@ -81,11 +81,13 @@ def segments(cmd: str) -> list:
     return re.split(r"[|;&\n]+", cmd)
 
 
-def main() -> int:
-    try:
-        payload = json.load(sys.stdin)
-    except Exception:
-        return 0
+def check(payload: dict) -> int:
+    """The guard itself, over an already-parsed payload.
+
+    Split out from main so hooks/guards.py can run all three guards in one
+    interpreter. Three separate hook registrations paid three interpreter
+    startups on every Bash call, measured at 13 ms each, to answer no.
+    """
     cmd = (payload.get("tool_input") or {}).get("command") or ""
     if not cmd:
         return 0
@@ -114,6 +116,14 @@ def main() -> int:
         )
         return 2
     return 0
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except Exception:
+        return 0
+    return check(payload)
 
 
 if __name__ == "__main__":
