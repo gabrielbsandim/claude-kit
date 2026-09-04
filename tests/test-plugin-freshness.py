@@ -38,13 +38,13 @@ def contains(got, want):
 
 
 def install(cfg, version, market="claude-kit", name="claude-kit"):
-    """A copy where `claude plugin install` puts one, with a runnable bin/kit."""
+    """A copy where `claude plugin install` puts one, with a runnable scripts/kit."""
     root = os.path.join(cfg, "plugins", "cache", market, name, version)
     os.makedirs(os.path.join(root, ".claude-plugin"), exist_ok=True)
     with open(os.path.join(root, ".claude-plugin", "plugin.json"), "w") as fh:
         json.dump({"name": name, "version": version}, fh)
-    os.makedirs(os.path.join(root, "bin"), exist_ok=True)
-    kit = os.path.join(root, "bin", "kit")
+    os.makedirs(os.path.join(root, "scripts"), exist_ok=True)
+    kit = os.path.join(root, "scripts", "kit")
     # A stand-in for `kit setup`: link this copy's kit into the target directory,
     # which is all the hook uses it for.
     with open(kit, "w") as fh:
@@ -90,7 +90,7 @@ def main():
         install(cfg, "0.4.0")
         bin_dir = os.path.join(root, "bin2")
         os.makedirs(bin_dir)
-        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.4.0/bin/kit"),
+        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.4.0/scripts/kit"),
                    os.path.join(bin_dir, "kit"))
         out, err, rc = run(cfg, bin_dir)
         check("nothing to do is silent", out.strip(), "")
@@ -102,18 +102,18 @@ def main():
         install(cfg, "0.4.0")
         bin_dir = os.path.join(root, "bin3")
         os.makedirs(bin_dir)
-        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.4.0/bin/kit"),
+        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.4.0/scripts/kit"),
                    os.path.join(bin_dir, "kit"))
         newer = os.path.join(root, "newer.sh")
         with open(newer, "w") as fh:
             fh.write("#!/bin/sh\nmkdir -p '%s/plugins/cache/claude-kit/claude-kit/0.5.0/.claude-plugin'\n"
                      "printf '{\"name\":\"claude-kit\",\"version\":\"0.5.0\"}' > "
                      "'%s/plugins/cache/claude-kit/claude-kit/0.5.0/.claude-plugin/plugin.json'\n"
-                     "mkdir -p '%s/plugins/cache/claude-kit/claude-kit/0.5.0/bin'\n"
+                     "mkdir -p '%s/plugins/cache/claude-kit/claude-kit/0.5.0/scripts'\n"
                      "printf '#!/bin/sh\\n[ \"$1\" = setup ] || exit 0\\nmkdir -p \"$2\"\\n"
                      "ln -sf \"$0\" \"$2/kit\"\\n' > "
-                     "'%s/plugins/cache/claude-kit/claude-kit/0.5.0/bin/kit'\n"
-                     "chmod +x '%s/plugins/cache/claude-kit/claude-kit/0.5.0/bin/kit'\n"
+                     "'%s/plugins/cache/claude-kit/claude-kit/0.5.0/scripts/kit'\n"
+                     "chmod +x '%s/plugins/cache/claude-kit/claude-kit/0.5.0/scripts/kit'\n"
                      % (cfg, cfg, cfg, cfg, cfg))
         os.chmod(newer, 0o755)
         out, err, rc = run(cfg, bin_dir, update_cmd="sh " + newer)
@@ -134,7 +134,7 @@ def main():
         install(cfg, "0.5.0")
         bin_dir = os.path.join(root, "bin4")
         os.makedirs(bin_dir)
-        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.4.0/bin/kit"),
+        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.4.0/scripts/kit"),
                    os.path.join(bin_dir, "kit"))
         out, err, rc = run(cfg, bin_dir)
         ctx = context(out)
@@ -148,7 +148,7 @@ def main():
         install(cfg, "0.4.0")
         bin_dir = os.path.join(root, "bin5")
         os.makedirs(bin_dir)
-        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.4.0/bin/kit"),
+        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.4.0/scripts/kit"),
                    os.path.join(bin_dir, "kit"))
         out, err, rc = run(cfg, bin_dir, update_cmd="false")
         check("a failing update exits zero", rc, 0)
@@ -164,7 +164,7 @@ def main():
         install(cfg, "0.10.0")
         bin_dir = os.path.join(root, "bin6")
         os.makedirs(bin_dir)
-        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.9.0/bin/kit"),
+        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.9.0/scripts/kit"),
                    os.path.join(bin_dir, "kit"))
         out, err, rc = run(cfg, bin_dir)
         check("0.10.0 is newer than 0.9.0", context(out), "now points at 0.10.0", contains)
@@ -174,7 +174,7 @@ def main():
         install(cfg, "0.4.0")
         bin_dir = os.path.join(root, "bin7")
         os.makedirs(bin_dir)
-        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.4.0/bin/kit"),
+        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.4.0/scripts/kit"),
                    os.path.join(bin_dir, "kit"))
         marker = os.path.join(root, "ran.log")
         counter = os.path.join(root, "count.sh")

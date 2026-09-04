@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Proves bin/screen-routes on a fixture repo, because a wrong route sends the
+"""Proves scripts/screen-routes on a fixture repo, because a wrong route sends the
 browser lens to prove a screen the branch never touched.
 
     python3 tests/test-screen-routes.py
@@ -12,7 +12,7 @@ import sys
 import tempfile
 
 KIT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(KIT, "bin", "screen-routes")
+SCRIPT = os.path.join(KIT, "scripts", "screen-routes")
 PASS, FAIL = 0, 0
 
 

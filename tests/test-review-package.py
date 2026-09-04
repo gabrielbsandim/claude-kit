@@ -21,7 +21,7 @@ import sys
 import tempfile
 
 KIT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RP = os.path.join(KIT, "bin", "review-package")
+RP = os.path.join(KIT, "scripts", "review-package")
 PASS, FAIL = 0, []
 
 CFG = {

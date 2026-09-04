@@ -10,7 +10,7 @@ fails, reporting what failed and the one command that fixes it.
 1. Put `kit` on PATH:
 
    ```
-   "${CLAUDE_PLUGIN_ROOT}/bin/kit" setup
+   "${CLAUDE_PLUGIN_ROOT}/scripts/kit" setup
    ```
 
    If it prints an `export PATH` line, the directory is not on PATH yet. Add

@@ -82,7 +82,7 @@ check("edit after a command, the command does not count backwards",
 check("last of several edits is unverified",
       run([user(), edit("a.py"), bash("pytest"), results(), edit("b.py")]), BLOCK)
 check("heredoc write with nothing after it",
-      run([user(), bash("cat > bin/gate <<'SH'\necho hi\nSH")]), BLOCK)
+      run([user(), bash("cat > scripts/gate <<'SH'\necho hi\nSH")]), BLOCK)
 check("in place sed with nothing after it",
       run([user(), bash("sed -i 's/a/b/' scripts/run.sh")]), BLOCK)
 

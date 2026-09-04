@@ -23,7 +23,7 @@ import sys
 import tempfile
 
 KIT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ISSUES = os.path.join(KIT, "bin", "issues")
+ISSUES = os.path.join(KIT, "scripts", "issues")
 PASS, FAIL = 0, 0
 
 

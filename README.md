@@ -88,7 +88,7 @@ Ten things are commands rather than instructions, because prose does not execute
 | --- | --- |
 | `kit worktree add/rm/gc` | the teardown nobody does. `gc` removes only what it can prove is finished and says why it kept the rest, and the funnel runs it at ship. While the teardown step was `rm`, which could not succeed once the pull request existed, it left 27 orphans and 35 GB behind. |
 | `kit version <declared>` | a session silently running an old copy of this plugin. It compares the version the skill declares, the version of the `kit` on PATH and the newest installed, and names which of the two fixes applies. |
-| `kit reload` | the three-step dance after a release. It updates, relinks, and separates what is already live (`bin/`, and a skill body, which is re-read at every invocation) from what actually waits on a restart (the output style, hooks, the listing). Until 0.7.1 it claimed skills were stuck until a restart, which was false and cost a restart nobody needed. |
+| `kit reload` | the three-step dance after a release. It updates, relinks, and separates what is already live (`scripts/`, and a skill body, which is re-read at every invocation) from what actually waits on a restart (the output style, hooks, the listing). Until 0.7.1 it claimed skills were stuck until a restart, which was false and cost a restart nobody needed. |
 | `kit issues related/orphans/tree` | a second issue for work already on the board, and an issue with no parent. Ranking is rarity-weighted, so the file every issue names counts for almost nothing and the file two issues name decides. |
 | the context nudge | the same rule without having to remember it. A `UserPromptSubmit` hook that says, once per band and never again until the band changes, that it is time to compact. HOLD is silent, which is most prompts. Register `hooks/context-nudge.sh`, never the versioned Python path. It writes one line to `/dev/tty` as well as into the model's context: only the user can run `/compact`, so a nudge that stops at the model still needs somebody to choose to relay it. |
 | `kit context` | a boundary passed without compacting, and a long pause taken with a large prefix. It reads this session through `CLAUDE_CODE_SESSION_ID` and answers HOLD below 120k tokens in context, AT THE NEXT BOUNDARY to 300k, NOW above it, and LATE below 15% of the window free, with what one prefix rewrite would cost right now and how many turns a compaction here repays itself in. Measured across 16 sessions: 16% of an API-equivalent US$ 2442 went to requests that read almost nothing from cache and wrote a whole prefix back, US$ 2.62 each against US$ 0.20 for a normal one. The three routine bands became token counts in 0.10.0, because a 300k prefix costs the same to re-read on a 200k window and a 1M one, and as percentages of 1M they answered HOLD for a session that had peaked at 507k. |
@@ -209,7 +209,7 @@ Three are registered, each protecting a property the funnel depends on:
   opening the pull request, and on the repository this was built against **17 of
   the 17 pull requests opened in the six days after install were over budget**,
   median 5798 characters of prose against 2000, worst 10545. An instruction that
-  is read and agreed with is not a gate. It imports `bin/pr-body` rather than
+  is read and agreed with is not a gate. It imports `scripts/pr-body` rather than
   reimplementing the measurement, and fails open on everything it cannot judge:
   a body file not written yet, `--fill`, an unparseable command. Raise the
   budget for one repository with `KIT_PR_BODY_MAX`.
@@ -378,7 +378,7 @@ early is somebody's unpushed work.
 
 | Piece | State |
 | --- | --- |
-| skills, agents, commands, hooks, output style, `bin/*` | verified by running them |
+| skills, agents, commands, hooks, output style, `scripts/*` | verified by running them |
 | GitHub Projects v2 board adapter | verified end to end: discover, read, write |
 | review grouping and doc-load numbers | measured on a real branch, reproducible with `kit review deep` |
 | `kit screens` route mapping | 10 cases in CI, and resolved a real component three levels below its page in 0.29s |

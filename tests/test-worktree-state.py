@@ -26,7 +26,7 @@ import sys
 import tempfile
 
 KIT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WORKTREE = os.path.join(KIT, "bin", "worktree")
+WORKTREE = os.path.join(KIT, "scripts", "worktree")
 PASS, FAIL = 0, 0
 
 
@@ -127,7 +127,7 @@ def main():
     root = tempfile.mkdtemp(prefix="kit-wtstate-")
     try:
         work, old_main = build(root)
-        bindir = os.path.join(root, "bin")
+        bindir = os.path.join(root, "scripts")
 
         # fresh: created at the base tip, nothing of its own. Must survive gc.
         fresh = add_worktree(work, root, "fresh", "origin/main")

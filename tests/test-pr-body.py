@@ -13,7 +13,7 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PR_BODY = os.path.join(ROOT, "bin", "pr-body")
+PR_BODY = os.path.join(ROOT, "scripts", "pr-body")
 
 failures = []
 passes = 0
@@ -189,7 +189,7 @@ check("14 script section default is 600", "DEFAULT_SECTION_MAX = 600" in src, "c
 
 # 15. `kit pr-body` is reachable through the single entry point, because that is
 #     the only name the skills use.
-kit = open(os.path.join(ROOT, "bin", "kit"), encoding="utf-8").read()
+kit = open(os.path.join(ROOT, "scripts", "kit"), encoding="utf-8").read()
 check("15 kit dispatches pr-body", "pr-body)" in kit, "no dispatcher entry")
 check("15 kit lists pr-body in usage", "kit pr-body" in kit, "not in the usage header")
 

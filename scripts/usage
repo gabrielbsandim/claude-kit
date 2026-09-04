@@ -26,7 +26,7 @@ script until 0.10.0:
     kit usage --all --since 2026-08-04 --until 2026-08-16 --by-stage
     kit usage --all --since 2026-08-17 --until 2026-08-29 --by-stage
 
-The rates and the request de-duplication come from `bin/context`, imported rather
+The rates and the request de-duplication come from `scripts/context`, imported rather
 than copied, because a second copy of a rule is the defect this plugin shipped in
 `no-em-dash` until 0.9.2. Those rates became per-model in 0.10.0: a single Opus rate
 was close enough while every agent inherited the main loop's model, and it stopped
@@ -44,7 +44,7 @@ import sys
 
 
 def load_context():
-    """`bin/context` has no .py extension, so it is loaded by path."""
+    """`scripts/context` has no .py extension, so it is loaded by path."""
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "context")
     loader = importlib.machinery.SourceFileLoader("kit_context", path)
     spec = importlib.util.spec_from_loader(loader.name, loader)

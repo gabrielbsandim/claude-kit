@@ -174,7 +174,7 @@ try:
     #     blanket catch. Without this case, "silent because handled" and "silent
     #     because it raised" were the same observation, and two mutations that made
     #     the hook raise in production passed every check.
-    fake = os.path.join(cfg, "plugins", "cache", "m", "claude-kit", "9.9.9", "bin")
+    fake = os.path.join(cfg, "plugins", "cache", "m", "claude-kit", "9.9.9", "scripts")
     os.makedirs(fake, exist_ok=True)
     with open(os.path.join(fake, "context"), "w", encoding="utf-8") as fh:
         fh.write('import json\nprint(json.dumps({"verdict": "NOW"}))\n')

@@ -58,10 +58,10 @@ def is_code(path):
         return False
     if os.path.splitext(path)[1].lower() in CODE:
         return True
-    # An extensionless file under bin/ is an executable, which this repository is
+    # An extensionless file under scripts/ is an executable, which this repository is
     # mostly made of. Anywhere else, no extension means no way to tell.
     parts = path.split("/")
-    return "bin" in parts[:-1] and "." not in parts[-1]
+    return "scripts" in parts[:-1] and "." not in parts[-1]
 
 
 def bash_writes(command):

@@ -23,7 +23,7 @@ import sys
 import tempfile
 
 KIT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GATE = os.path.join(KIT, "bin", "gate")
+GATE = os.path.join(KIT, "scripts", "gate")
 REAL_GIT = shutil.which("git")
 PASS, FAIL = 0, []
 

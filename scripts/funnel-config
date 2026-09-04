@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Resolves the per-repo funnel config. Every other script in bin/ reads the repo
+# Resolves the per-repo funnel config. Every other script in scripts/ reads the repo
 # through this one, so a repo is configured in exactly one file and no script
 # carries a path or a command of its own.
 #

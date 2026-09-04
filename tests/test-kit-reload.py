@@ -38,12 +38,12 @@ def check(name, cond, detail=""):
 
 
 def installed(cfg, version, name="claude-kit"):
-    """A copy where `claude plugin install` puts one, with the real bin/ in it."""
+    """A copy where `claude plugin install` puts one, with the real scripts/ in it."""
     root = os.path.join(cfg, "plugins", "cache", name, name, version)
     os.makedirs(os.path.join(root, ".claude-plugin"), exist_ok=True)
     with open(os.path.join(root, ".claude-plugin", "plugin.json"), "w") as fh:
         json.dump({"name": name, "version": version}, fh)
-    shutil.copytree(os.path.join(KIT, "bin"), os.path.join(root, "bin"), dirs_exist_ok=True)
+    shutil.copytree(os.path.join(KIT, "scripts"), os.path.join(root, "scripts"), dirs_exist_ok=True)
     return root
 
 
@@ -62,7 +62,7 @@ def stub_claude(bindir, cfg, installs=None):
         body += "printf '{\"name\":\"claude-kit\",\"version\":\"%s\"}' > '%s/.claude-plugin/plugin.json'\n" % (
             os.path.basename(installs), installs,
         )
-        body += "cp -R '%s' '%s/bin'\n" % (os.path.join(KIT, "bin"), installs)
+        body += "cp -R '%s' '%s/scripts'\n" % (os.path.join(KIT, "scripts"), installs)
     body += "echo 'stub update done'\n"
     with open(path, "w") as fh:
         fh.write(body)
@@ -76,7 +76,7 @@ def reload_from(root, cfg, target, claude_dir=None):
     base = "/usr/bin:/bin"
     env["PATH"] = f"{claude_dir}:{base}" if claude_dir else base
     out = subprocess.run(
-        [os.path.join(root, "bin", "kit"), "reload", target],
+        [os.path.join(root, "scripts", "kit"), "reload", target],
         capture_output=True, text=True, env=env,
     )
     return out.stdout + out.stderr, out.returncode
@@ -85,7 +85,7 @@ def reload_from(root, cfg, target, claude_dir=None):
 root = tempfile.mkdtemp(prefix="kit-reload-")
 try:
     cfg = os.path.join(root, "cfgdir")
-    target = os.path.join(root, "bin")
+    target = os.path.join(root, "scripts")
     os.makedirs(target, exist_ok=True)
 
     old = installed(cfg, "0.6.0")
@@ -131,9 +131,9 @@ try:
     check("3 the unproven half is marked", "inferred" in lowered,
           "the agent-definition claim is asserted rather than marked INFERRED")
 
-    # 4. bin/ is live, which is the other half of the correction: the reader has
+    # 4. scripts/ is live, which is the other half of the correction: the reader has
     #    to know the command they just installed already works.
-    check("4 it says bin is already live", "live already, no restart" in lowered, out)
+    check("4 it says scripts is already live", "live already, no restart" in lowered, out)
 
     # 5. The restart line is the one that works from a shell, and it says where to
     #    run it. `claude -c` alone loses the conversation; running it inside the
@@ -164,7 +164,7 @@ try:
 
     # 8. The correction is dated in the source, so the next person to edit this
     #    block finds the measurement instead of re-deriving it.
-    src = open(os.path.join(KIT, "bin", "kit"), encoding="utf-8").read()
+    src = open(os.path.join(KIT, "scripts", "kit"), encoding="utf-8").read()
     check("8 the measurement is recorded next to the code",
           "0.1.1 at 19:03" in src, "the provenance of the correction is gone")
 finally:

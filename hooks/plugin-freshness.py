@@ -197,7 +197,7 @@ def main():
     relinked = False
     if was_linked != after and root:
         try:
-            subprocess.run([os.path.join(root, "bin", "kit"), "setup", bin_dir],
+            subprocess.run([os.path.join(root, "scripts", "kit"), "setup", bin_dir],
                            capture_output=True, text=True, timeout=30)
             relinked = linked_version(bin_dir) == after
         except (subprocess.SubprocessError, OSError):

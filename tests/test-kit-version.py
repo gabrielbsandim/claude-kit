@@ -45,12 +45,12 @@ def contains(got, want):
 
 
 def plugin_copy(root, version, name="claude-kit"):
-    """A minimal plugin tree: a manifest and the real bin/, so kit runs from it."""
+    """A minimal plugin tree: a manifest and the real scripts/, so kit runs from it."""
     os.makedirs(os.path.join(root, ".claude-plugin"), exist_ok=True)
     with open(os.path.join(root, ".claude-plugin/plugin.json"), "w") as fh:
         json.dump({"name": name, "version": version}, fh)
-    shutil.copytree(os.path.join(KIT, "bin"), os.path.join(root, "bin"), dirs_exist_ok=True)
-    return os.path.join(root, "bin", "kit")
+    shutil.copytree(os.path.join(KIT, "scripts"), os.path.join(root, "scripts"), dirs_exist_ok=True)
+    return os.path.join(root, "scripts", "kit")
 
 
 def installed(cfg, name, version):
@@ -98,7 +98,7 @@ def main():
         # The running copy is older than what is installed: `kit setup` pinned a
         # versioned path, so the executable on PATH went stale on its own.
         check("an older running copy is reported as STALE KIT", out, "STALE KIT", contains)
-        check("and the fix it prints is a setup command", out, "bin/kit setup", contains)
+        check("and the fix it prints is a setup command", out, "scripts/kit setup", contains)
         check("stale exits non-zero so it cannot be skimmed past", rc, 3)
 
         # The caller declaring an older version is the session-restart case.

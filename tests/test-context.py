@@ -20,7 +20,7 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CTX = os.path.join(ROOT, "bin", "context")
+CTX = os.path.join(ROOT, "scripts", "context")
 
 failures = []
 passes = 0

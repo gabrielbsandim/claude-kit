@@ -9,7 +9,7 @@ were over the budget**, median 5798 characters of prose against 2000, worst
 
 That is the same failure the output style exists for, and it has the same fix.
 Teach with the skill, enforce with the hook. The measurement is not duplicated
-here: this imports `bin/pr-body` and calls its `measure`, because a second copy
+here: this imports `scripts/pr-body` and calls its `measure`, because a second copy
 of a rule is a second copy that drifts, which is exactly the defect this plugin
 shipped in `no-em-dash` until 0.9.2.
 
@@ -36,8 +36,8 @@ DEFAULT_SECTION_MAX = int(os.environ.get("KIT_PR_BODY_SECTION_MAX", 600))
 
 
 def load_pr_body():
-    """The measurement, imported from bin/pr-body rather than reimplemented."""
-    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin", "pr-body")
+    """The measurement, imported from scripts/pr-body rather than reimplemented."""
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "pr-body")
     spec = importlib.util.spec_from_loader("kit_pr_body", importlib.machinery.SourceFileLoader("kit_pr_body", path))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

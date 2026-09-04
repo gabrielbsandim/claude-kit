@@ -110,7 +110,7 @@ case "$cmd" in
     fi
     if [ -n "$newest" ] && [ "$mine" != unknown ] && newer_than "$mine" "$newest"; then
       printf 'STALE KIT     this executable is %s and %s is installed. `kit setup` links a\n' "$mine" "$newest"
-      printf '              version-pinned path, so run it again: %s/bin/kit setup\n' "$newest_root"
+      printf '              version-pinned path, so run it again: %s/scripts/kit setup\n' "$newest_root"
       stale=1
     fi
     [ $stale -eq 0 ] && printf 'up to date\n'
@@ -137,7 +137,7 @@ case "$cmd" in
     [ -n "$after" ] || die "no installed copy of $name under $cfg/plugins"
 
     root="$(ls -d "$cfg"/plugins/cache/*/"$name"/"$after"/ 2>/dev/null | head -1 || true)"
-    "$root/bin/kit" setup "$target" >/dev/null
+    "$root/scripts/kit" setup "$target" >/dev/null
     printf '\nkit        %s  (relinked, live now)\n' "$after"
 
     if [ "$before" != "$after" ]; then
@@ -149,7 +149,7 @@ case "$cmd" in
       # each invocation. Telling somebody to restart for a reason that is not real
       # is how the real reasons stop being believed.
       printf '\nLive already, no restart:\n'
-      printf '  bin/, including kit itself, resolved on PATH when it runs\n'
+      printf '  scripts/, including kit itself, resolved on PATH when it runs\n'
       printf '  a skill body, re-read from the newest copy at each invocation\n'
       printf '\nWaiting on a restart:\n'
       printf '  the output style, read into the system prompt once at boot\n'

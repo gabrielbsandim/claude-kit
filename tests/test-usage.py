@@ -16,7 +16,7 @@ import sys
 import tempfile
 
 KIT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-USAGE = os.path.join(KIT, "bin", "usage")
+USAGE = os.path.join(KIT, "scripts", "usage")
 PASS, FAIL = 0, 0
 
 
@@ -84,7 +84,7 @@ with tempfile.TemporaryDirectory() as cfg:
     build(cfg, SESSION, [row("r1", "m1", 100)], [])
     got = run(cfg, "--session", SESSION)
     check("no subagents is zero, not a crash", got["subagents"]["tokens"], 0)
-    check("cost uses the rates from bin/context", round(got["main"]["cost"], 6), round(100 * 25 / 1e6, 6))
+    check("cost uses the rates from scripts/context", round(got["main"]["cost"], 6), round(100 * 25 / 1e6, 6))
 
 with tempfile.TemporaryDirectory() as cfg:
     os.makedirs(os.path.join(cfg, "projects"), exist_ok=True)
