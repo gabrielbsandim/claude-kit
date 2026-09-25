@@ -30,12 +30,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Dispatch on the shebang rather than the name: bin/ holds both, and
+      # Dispatch on the shebang rather than the name: scripts/ holds both, and
       # `bash -n` on a Python file is a syntax error about the wrong language.
       - name: Syntax, by interpreter
         run: |
           set -e
-          for f in bin/*; do
+          for f in scripts/*; do
             case "$(head -1 "$f")" in
               *python*) python3 -m py_compile "$f"; echo "py   $f" ;;
               *)        bash -n "$f";              echo "bash $f" ;;
@@ -49,8 +49,8 @@ jobs:
       # one, with identical inputs, because apt was the only thing here that touches
       # the network. A check that can block forever is a check that stops being run.
       #
-      # Directories are skipped: the step before this one compiles bin/*.py and leaves
-      # bin/__pycache__ behind, which `head -1` cannot read, so it reached shellcheck
+      # Directories are skipped: the step before this one compiles scripts/*.py and leaves
+      # scripts/__pycache__ behind, which `head -1` cannot read, so it reached shellcheck
       # as a path that is not a script.
       - name: shellcheck
         run: |
@@ -59,7 +59,7 @@ jobs:
             timeout 300 sudo apt-get install -y shellcheck
           fi
           shellcheck --version
-          for f in bin/*; do
+          for f in scripts/*; do
             [ -f "$f" ] || continue
             case "$(head -1 "$f")" in *python*) ;; *) shellcheck -S warning "$f" || true ;; esac
           done
@@ -147,7 +147,7 @@ jobs:
       # would match itself.
       - name: No em dash in shipped text
         run: |
-          hits=$(grep -rlP '\x{2014}' --include='*.md' --include='*.json' --include='*.py' . bin/* || true)
+          hits=$(grep -rlP '\x{2014}' --include='*.md' --include='*.json' --include='*.py' . scripts/* || true)
           if [ -n "$hits" ]; then
             echo "em dash found in:"; echo "$hits"; exit 1
           fi
