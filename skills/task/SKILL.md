@@ -90,6 +90,11 @@ it is the one you can fix without stopping (`evidence.md` &middot; *Stale kit*).
   their language; write artifacts in English. The tell that this drifted is a
   dispatch list reading "Re-review de testes da 582", which is a label three
   people later read in a repository whose every other line is English.
+- **A code comment says why, in at most two lines.** Why a line that looks wrong is
+  right, and nothing a reader gets from the line itself. No ticket key, pull request
+  number, date or "N of M" count: those are true on the day they are written, and
+  the tracker and the commit keep them true. A repo that lists `kit comments` as a
+  gate checks this on the lines the branch adds.
 - **A new issue is the last resort, and never an orphan.** A finding outside this
   task's scope has four homes before a new issue: the deferred ledger, a comment on
   an issue that already covers it, this task's own diff if it is smaller than
@@ -213,6 +218,31 @@ written.
 the long lane. Escalating late costs the minutes already spent; taking the short
 lane wrongly ships a defect with a green report attached, which is the failure
 this whole skill exists to prevent. The reversal is cheap in one direction only.
+
+### A repo on the lite lane
+
+`kit config get .lane` printing `lite` is a decision the repo made once: one reader
+instead of five, because on that repo the per-task cost matters more than the extra
+readers. It holds for every task there, so it is read here, before the lane call, and
+it replaces stages 1 to 4:
+
+1. **Spec inline, no agent.** What, why, acceptance criteria and files, in 5 to 10
+   lines. Show it and **wait for the user's approval**: it is the one question this
+   lane keeps, because the spec is what answers "why" when someone asks in review. Its
+   why becomes the body's why.
+2. **`kit worktree add` and `kit board in_progress`, as in stage 2, then implement in
+   this session.** A bug starts with the failing test that reproduces it.
+3. `kit gate implement_first_pass`, then commit.
+4. `kit review <level>` prints one dispatch, two when a file in `risk.paths` moved.
+   Each goes to `funnel-reviewer`. CONFIRMED is fixed here, then `kit gate
+   implement_fix_round` and a commit, with no second review: `maxRounds` is 1, and
+   `kit review --since` refuses. PLAUSIBLE, and anything left open, is one line each in
+   the body.
+5. **Stage 5 without the ledger.** The body is the only text on the pull request:
+   `kit ledger` refuses in this repo, and the hook refuses a top-level pull request
+   comment. The tracker gets one line when the pull request opens.
+
+The short lane still applies inside a lite repo: no reviewable surface, no step 4.
 
 ## The five agents this skill dispatches
 
@@ -457,16 +487,18 @@ a skipped read must not lose:
    the template, the tables, the checkboxes or the fenced blocks. Over budget it
    exits 3 and prints the sections by size.
 
-   Cut, do not compress. Everything worth keeping has a better home: the reasoning
-   behind a finding goes in the ledger comment, a product decision goes in the issue,
-   and why a non-obvious line exists goes in the code next to it (`evidence.md`
-   &middot; *A body that competes with the diff*).
+   Cut, do not relocate. What does not fit is left out, not moved into a pull request
+   comment. A product decision goes in the issue, why a non-obvious line exists goes
+   in the code next to it in at most two lines, and the findings table is the one
+   comment a task may post (`evidence.md` &middot; *A body that competes with the
+   diff*).
 
    What the body owes the reader, and nothing else: what changed and why, in the
    repo template's own sections; what to check; what is knowingly left out and
-   who owns it; and the link to the ledger comment.
+   who owns it; and the link to the ledger comment, where there is one.
 
-4. The findings ledger, right after the URL exists. It has its own budget and it
+4. The findings ledger, right after the URL exists, unless `kit config get .ledger`
+   prints `false`: then there is none, and `kit ledger` says so. It has its own budget and it
    is checked: run `kit ledger` on the file, then post it with
    `gh pr comment --body-file`. **1000 characters of prose, 350 per section**, and
    one row per finding in a table, which costs no prose at all. `review.md` has
@@ -486,8 +518,8 @@ a skipped read must not lose:
 
 **Six items, hard cap, and at most 600 characters of prose in total.** Anything
 that does not fit one of the six does not go in the final message. It goes in the
-findings ledger comment, which is where a reader who wants it will look, and
-**not** in the pull request body: the body has its own budget in stage 5, and
+findings ledger comment, which is where a reader who wants it will look, or nowhere
+in a repo without one, and **not** in the pull request body: the body has its own budget in stage 5, and
 naming it as the overflow here is what pushed PR 590 to 11902 characters of prose
 while this report stayed under 600.
 

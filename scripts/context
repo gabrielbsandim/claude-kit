@@ -40,6 +40,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import sys
 
 # Opus and Sonnet 5 are 1M; Haiku 4.5 is 200k. Passed in rather than detected,
@@ -80,25 +81,66 @@ BANDS_TOKENS = (
 LATE_FREE_PCT = 15
 
 # Per million tokens. Cache write is 1.25x input at the 5-minute TTL, cache read is
-# 0.1x. Matched on a substring of the model id rather than on an exact name, so a
-# point release does not silently fall back to the wrong tier.
+# 0.1x. Keyed by family, then by version, because one family spans list prices three
+# times apart: priced by family alone, a Sonnet 4.6 run reads a third cheaper than it
+# was and an Opus 4.1 run reads a third of what it was.
 PRICES = {
     "opus": {"in": 5.0, "out": 25.0, "cw": 6.25, "cr": 0.50},
     "sonnet": {"in": 2.0, "out": 10.0, "cw": 2.50, "cr": 0.20},
     "haiku": {"in": 1.0, "out": 5.0, "cw": 1.25, "cr": 0.10},
+    "fable": {"in": 10.0, "out": 50.0, "cw": 12.50, "cr": 1.00},
 }
+
+
+def _rate(inp, out):
+    return {"in": inp, "out": out, "cw": round(inp * 1.25, 4), "cr": round(inp * 0.1, 4)}
+
+
+# (family, major, minor) first, then (family, major), then the family row above.
+VERSIONED = {
+    ("opus", 4, None): _rate(15.0, 75.0),
+    ("opus", 4, 1): _rate(15.0, 75.0),
+    ("opus", 4): _rate(5.0, 25.0),
+    ("opus", 5, 5): _rate(4.0, 20.0),
+    ("sonnet", 3): _rate(3.0, 15.0),
+    ("sonnet", 4): _rate(3.0, 15.0),
+    ("opus", 3): _rate(15.0, 75.0),
+    ("haiku", 3): _rate(0.25, 1.25),
+    ("haiku", 3, 5): _rate(0.80, 4.0),
+}
+MODEL_ID = re.compile(r"(opus|sonnet|haiku|fable)-(\d)(?!\d)(?:-(\d{1,2})(?!\d))?")
+# The naming before Claude 4 put the version first: claude-3-5-sonnet-20241022.
+LEGACY_ID = re.compile(r"claude-(\d)(?:-(\d))?-(opus|sonnet|haiku)")
+
 # The default when a request names no model, and the tier this command's own prose
 # quotes. Opus rather than an average: over-reporting a saving is the failure mode
 # that matters here.
 RATES = PRICES["opus"]
 
+# Substring of a model id to a rate, checked before everything above, longest key
+# first. Filled from the repo config's `prices`, for a provider whose rates are not
+# the list: a Bedrock or Vertex contract, or a model this table has not met yet.
+OVERRIDES = {}
+
 
 def rates_for(model):
     name = (model or "").lower()
-    if "haiku" in name:
-        return PRICES["haiku"]
-    if "sonnet" in name:
-        return PRICES["sonnet"]
+    for key in sorted(OVERRIDES, key=len, reverse=True):
+        if key.lower() in name:
+            return OVERRIDES[key]
+    hit, legacy = MODEL_ID.search(name), LEGACY_ID.search(name)
+    if hit or legacy:
+        family, major, minor = (
+            (hit.group(1), hit.group(2), hit.group(3)) if hit
+            else (legacy.group(3), legacy.group(1), legacy.group(2)))
+        major, minor = int(major), int(minor) if minor else None
+        for key in ((family, major, minor), (family, major)):
+            if key in VERSIONED:
+                return VERSIONED[key]
+        return PRICES[family]
+    for family in ("haiku", "sonnet", "fable"):
+        if family in name:
+            return PRICES[family]
     return PRICES["opus"]
 
 

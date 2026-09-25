@@ -80,6 +80,25 @@ Four keys are worth your attention; the rest have workable defaults.
 lens that does not exist, a base branch with no remote, a document the config
 names but the repo lacks, and a stage that runs the same work twice.
 
+## The lite lane
+
+`"lane": "lite"` is for a repository where the cost of a task matters more than the
+extra readers: a metered provider, a team budget. It keeps what gives confidence for
+little and drops what is ceremony there:
+
+| Kept | Dropped |
+| --- | --- |
+| a short spec, written inline and approved before any code | the triage, implementer and test writer agents |
+| `kit gate`, including the two new-code gates below | a second review round: `maxRounds` defaults to 1 |
+| one `funnel-reviewer` dispatch, plus the consequences lens when a `risk.paths` file moved | the findings ledger: `ledger` defaults to false |
+| the ship preflight, the body budget, the board move | the browser lens |
+
+A value the repo names still wins over the profile, and `kit config check` fails a lite
+repo whose effort level spreads its lenses over two slices, since that is two reviewers
+under the lite lane's name. Where the cost comes from is `kit usage --by-stage` on a full
+run: context times requests, not output, so every agent that reads the repository again
+is paid for in cache reads.
+
 ## What is scripted, and what is left to judgment
 
 Ten things are commands rather than instructions, because prose does not execute:
@@ -93,12 +112,14 @@ Ten things are commands rather than instructions, because prose does not execute
 | the context nudge | the same rule without having to remember it. A `UserPromptSubmit` hook that says, once per band and never again until the band changes, that it is time to compact. HOLD is silent, which is most prompts. Register `hooks/context-nudge.sh`, never the versioned Python path. It writes one line to `/dev/tty` as well as into the model's context: only the user can run `/compact`, so a nudge that stops at the model still needs somebody to choose to relay it. |
 | `kit context` | a boundary passed without compacting, and a long pause taken with a large prefix. It reads this session through `CLAUDE_CODE_SESSION_ID` and answers HOLD below 120k tokens in context, AT THE NEXT BOUNDARY to 300k, NOW above it, and LATE below 15% of the window free, with what one prefix rewrite would cost right now and how many turns a compaction here repays itself in. Measured across 16 sessions: 16% of an API-equivalent US$ 2442 went to requests that read almost nothing from cache and wrote a whole prefix back, US$ 2.62 each against US$ 0.20 for a normal one. The three routine bands became token counts in 0.10.0, because a 300k prefix costs the same to re-read on a 200k window and a 1M one, and as percentages of 1M they answered HOLD for a session that had peaked at 507k. |
 | `kit pr-body <file>` | a pull request body that competes with the diff instead of introducing it. It measures the prose you added, not the template, its tables or a fenced block, and refuses over 2000 characters or 600 in one section. The chat report had a budget and the body did not, so the overflow went there: one measured body ran to 11902 characters of prose in front of a 163-line source diff. |
-| `kit ledger <file>` | a findings ledger nobody finishes reading. The same measurement on the budget a comment gets, 1000 characters of prose and 350 per section, which is half the body's because the ledger is the second thing read and only by somebody who already decided to. A finding in a table row costs no prose at all, so the budget is reachable rather than merely small. Then the body had a budget and the ledger did not, so the overflow moved again: measured 2026-08-29, the ledgers on pull requests 874, 877 and 880 carried 4515, 4432 and 3734 characters of prose in front of bodies allowed 2000. |
+| `kit comments` | a code comment that narrates, or carries a ticket key, a pull request number, a date or an "N of M" count, all of which are true only on the day they are written. Added lines only, merge base against the working tree, so it gates before the commit and never fails on what the branch inherited. A run is capped at `comments.maxLines` lines of text, 2 by default; a JSDoc's delimiters are free and a `Usage:` block ends the count. |
+| `kit ratchet --config F` | a strict lint rule set that is red on arrival. It runs ESLint with its own config over every changed file twice, at the merge base and now, and fails only on a violation the base did not have, compared by rule and message with the numbers blanked, so moving code is not a new violation and making an already too complex function more complex is. Measured on a real branch: 4 files, 2 new errors, 22 inherited, 1.45s; one base file alone carried 13 `max-depth` violations an absolute gate would have charged to the change. |
+| `kit ledger <file>` | a findings ledger nobody finishes reading. The same measurement on the budget a comment gets, 1000 characters of prose and 350 per section, which is half the body's because the ledger is the second thing read and only by somebody who already decided to. A finding in a table row costs no prose at all, so the budget is reachable rather than merely small. Then the body had a budget and the ledger did not, so the overflow moved again: measured 2026-08-29, the ledgers on pull requests 874, 877 and 880 carried 4515, 4432 and 3734 characters of prose in front of bodies allowed 2000. In a repo with `ledger` false it refuses instead of measuring. |
 | `kit gate <stage>` | paying twice for the same check. Receipts are keyed by the working tree's SHA, so the pre-push check skips what the implement gate just proved: measured in obranova on 2026-08-30, that is 359s a push, lint 101s plus types 72s plus suite 186s, and a fix round pushes again. The guard is `kit gate --verify ship >/dev/null 2>&1 && exit 0` at the top of the hook, and it fails open. `gateJobs` runs a stage's independent gates at once; `exclusive` keeps one alone. Since 0.11.0 the tree SHA refuses to be wrong quietly: `git add -A` aborts on any path that is not a regular file, a symlink or a git directory, and the sha then silently fell back to HEAD's, so every receipt verified clean against any uncommitted change. Found live, as three character devices an agent sandbox bind-mounts over dotfiles. |
-| `kit review <level>` | one dispatch per reviewer and a blanket document load. One dispatch per slice instead, with the diff written to a file so no reviewer runs `git`. Since 0.11.0 a lens may declare `readsOutsideDiff`, which buys back the one thing that discipline denies: it is dispatched alone, with the files the diff touched listed to be read whole rather than as hunks, and the callers of what it exports precomputed by grep and ranked. Measured on two pull requests, all eight findings an outside reviewer returned needed exactly that reading, and no slice lens had reached any of them. |
+| `kit review <level>` | one dispatch per reviewer and a blanket document load. `risk.paths` adds the lenses in `risk.lenses` whenever the diff touches a matching file, naming the file and the pattern, because size is the wrong axis for risk. At `maxRounds` 1, `--since` refuses rather than paying for a round the config said does not exist. One dispatch per slice instead, with the diff written to a file so no reviewer runs `git`. Since 0.11.0 a lens may declare `readsOutsideDiff`, which buys back the one thing that discipline denies: it is dispatched alone, with the files the diff touched listed to be read whole rather than as hunks, and the callers of what it exports precomputed by grep and ranked. Measured on two pull requests, all eight findings an outside reviewer returned needed exactly that reading, and no slice lens had reached any of them. |
 | `kit screens` | guessing which URL renders a component the diff changed. It walks the import graph to the router entry point that reaches it. |
 | `kit board <status>` | two board writes, behind one port with three adapters. |
-| `kit usage` | guessing what a dispatched stage costs. A subagent's usage is never written into its parent transcript, it lives under `<project>/<session>/subagents/`, so a reader that globs only the parent reports every agent as free. Measured across every transcript on this machine, 2026-08-23: 350 subagent transcripts, 15759 requests, 19.6% of all tokens. Since 0.10.0 `--since`, `--until` and `--by-stage` answer the next question, whether a change to the funnel paid: they cut on each request's own day and print the cost per execution per stage. Measured with them on 2026-08-29, the subagent lane went from 9.9% of all tokens in the thirteen days before the funnel to 50.0% in the thirteen after. Rates are per model, because one Opus rate over a run where two stages are on Sonnet reports those stages at about 2.5 times what they cost. |
+| `kit usage` | guessing what a dispatched stage costs. A subagent's usage is never written into its parent transcript, it lives under `<project>/<session>/subagents/`, so a reader that globs only the parent reports every agent as free. Measured across every transcript on this machine, 2026-08-23: 350 subagent transcripts, 15759 requests, 19.6% of all tokens. Since 0.10.0 `--since`, `--until` and `--by-stage` answer the next question, whether a change to the funnel paid: they cut on each request's own day and print the cost per execution per stage. Measured with them on 2026-08-29, the subagent lane went from 9.9% of all tokens in the thirteen days before the funnel to 50.0% in the thirteen after. Rates are per model, because one Opus rate over a run where two stages are on Sonnet reports those stages at about 2.5 times what they cost. Since 0.15.0 they are per version too, since one family spans list prices three times apart, a repo's `prices` overrides them for a provider that is not on the list, a stage is read from the agent type the harness records beside each transcript before the prompt is guessed at, and `--by-session` prints the cost per session with its branch. `--project` reads every transcript of that directory and wins over `CLAUDE_CODE_SESSION_ID`: until then the variable won, and the same command run inside a session answered for 1 session of a project that had 6. |
 | `kit review --disjoint a b` | guessing whether two stages can run in parallel. It answers from the file lists. |
 | the `flaky` list | a red gate in a file the diff never touched becoming a wasted fix round. |
 
@@ -205,7 +226,12 @@ Three are registered, each protecting a property the funnel depends on:
   and `--no-verify`. A gate on a green suite is worth exactly what that suite is
   hard to fake. It also blocks `git push --force` without `--force-with-lease`.
 - **`pr-body-gate`** refuses a `gh pr create` or `gh pr edit` whose body is over
-  the `kit pr-body` budget. Both skills already said to run that check before
+  the `kit pr-body` budget, and since 0.15.0 the other doors the same prose used: a
+  body PATCHed through `gh api`, a `gh pr comment` or a comment POSTed through the API,
+  and a Jira comment written through an Atlassian MCP tool, the last three on the
+  comment budget. In a repo with `ledger` false a top-level pull request comment is
+  refused outright unless the command carries `KIT_REPLY=1`, which says it answers a
+  person. The budgets come from the repo's `prBody`, and the environment still wins. Both skills already said to run that check before
   opening the pull request, and on the repository this was built against **17 of
   the 17 pull requests opened in the six days after install were over budget**,
   median 5798 characters of prose against 2000, worst 10545. An instruction that
@@ -346,7 +372,7 @@ main, so no bot exception is needed.
 ## Tests
 
 ```sh
-python3 tests/test-hooks.py            # 36 cases, half of them "must not block"
+python3 tests/test-hooks.py            # 105 cases, half of them "must not block"
 python3 tests/test-screen-routes.py    # 10 cases: route groups, dynamic segments, the import walk
 python3 tests/test-gate-jobs.py        # 14 cases: that concurrency happens, and that exclusive means alone
 python3 tests/test-worktree-state.py   # 23 cases: what teardown will and will not delete
@@ -356,7 +382,8 @@ python3 tests/test-plugin-freshness.py # 27 cases, most of them "must stay silen
 python3 tests/check-eval-schema.py     # eval frontmatter against the harness's allowed keys
 python3 tests/check-frontmatter.py     # every frontmatter block through a strict YAML parser
 python3 tests/test-phase-gate.py       # 18 cases: 5 must block, 13 must not
-python3 tests/test-usage.py            # 8 cases: the lane split, and counting a request once
+python3 tests/test-usage.py            # 35 cases: the lane split, counting a request once, the rate per version
+python3 tests/test-new-code.py         # 34 cases: what a branch adds, never what it inherited
 claude plugin validate . --strict      # manifests, skills, agents, commands
 npx agnix .                            # the external spec linter, configured by .agnix.toml
 ```
@@ -392,6 +419,8 @@ early is somebody's unpushed work.
 | the two lanes | 45 cases in CI, and 19 mutations to the rules each turn it red. Two of them survived the first version of the suite: a verdict removed from the agent's return shape, and the short lane silently dropping the board move |
 | `kit pr-body` | 34 cases in CI, and 8 mutations to the guards each turn it red. Calibrated on three real bodies: 3123, 9999 and 11902 characters of prose against a 2000 budget |
 | the browser lens | plumbing proven: server started, polled, navigated, resized, and the layout probe named the overflowing element and the below-fold button. **Never run against a real authenticated app**, so the auth path and the dispatch prompt are unproven |
+| the lite lane | 9 cases in CI on the profile, the round cap and the one-reviewer check, and `kit review` run against a real branch. **Never run end to end as a task**, so the skill section is unproven in use |
+| `kit comments`, `kit ratchet` | 34 cases in CI against a fake ESLint, and 5 mutations turn them red. The ratchet ran against a real branch with ESLint 8; ESLint 9 with a flat config is written and **never run** |
 | Jira and Azure DevOps adapters | written from the API contract, **never run**, marked so in their own source |
 | `evals/` | schema validated offline, **never run**: `claude plugin eval` is early access and was not enabled on the account this was built from |
 

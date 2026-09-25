@@ -21,7 +21,20 @@ REPO_ROOT="$("$CFG" root)"
 OUT="$(git rev-parse --absolute-git-dir)/claude-kit/review"
 mkdir -p "$OUT"
 
+CONFIG_DIR="$("$CFG" configdir)"
+
 die() { printf '%s\n' "$*" >&2; exit 1; }
+
+# A lens document may be as local as the config that names it, and an untracked file
+# is absent from every worktree. So it resolves against the checkout, then against
+# the checkout that owns the config, and prints absolute: the reviewer has no cwd to
+# resolve a relative path against that is guaranteed to be either.
+doc_path() {
+  if [ -f "$REPO_ROOT/$1" ]; then printf '%s' "$REPO_ROOT/$1"
+  elif [ -f "$CONFIG_DIR/$1" ]; then printf '%s' "$CONFIG_DIR/$1"
+  else printf '%s' "$1"
+  fi
+}
 
 since=""
 args=()
@@ -127,6 +140,41 @@ changed_files() {
       done
 }
 
+# Lenses a level does not buy but a path does. Size is the wrong axis for risk: one
+# line in the file that decides what gets retried is worth the lens that reads
+# outside the diff, and three hundred lines of copy are not. `risk.paths` are shell
+# case patterns, so `*` crosses directories.
+RISK_WHY=""
+risk_lenses() {
+  local spec range file glob hit="" extra
+  extra="$("$CFG" get '.risk.lenses[]?')"
+  [ -n "$extra" ] || return 0
+  spec="$("$CFG" get '.slices.all')"
+  range="$(slice_range "$spec")"
+  while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    while IFS= read -r glob; do
+      [ -z "$glob" ] && continue
+      # shellcheck disable=SC2254
+      case "$file" in $glob) hit="$file matches $glob"; break 2 ;; esac
+    done < <("$CFG" get '.risk.paths[]?')
+  done < <(cd "$REPO_ROOT" && eval "git diff --name-only $range")
+  [ -n "$hit" ] || return 0
+  RISK_WHY="$hit"
+  printf '%s\n' "$extra"
+}
+
+with_risk() {
+  local level="$1" lenses extra l
+  lenses="$("$CFG" get ".effort.\"$level\"[]?")"
+  [ -n "$lenses" ] || return 0
+  extra="$(risk_lenses)"
+  for l in $extra; do
+    printf '%s\n' "$lenses" | grep -qxF "$l" || lenses="$lenses"$'\n'"$l"
+  done
+  printf '%s\n' "$lenses"
+}
+
 reads_outside() {
   case "$("$CFG" get ".lenses.\"$1\".readsOutsideDiff?" 2>/dev/null || true)" in
     true) return 0 ;;
@@ -211,7 +259,7 @@ case "${1:-}" in
 
   --plan)
     level="${2:?usage: review-package --plan <light|standard|deep>}"
-    lenses="$("$CFG" get ".effort.\"$level\"[]?")"
+    lenses="$(with_risk "$level")"
     [ -n "$lenses" ] || die "no effort level \"$level\" in the config"
     printf 'effort %s%s\n\n' "$level" "${since:+, fix round since ${since:0:8}}"
     for l in $lenses; do
@@ -230,7 +278,14 @@ case "${1:-}" in
   # that keeps independent contexts where the material actually differs.
   --dispatches)
     level="${2:?usage: review-package --dispatches <light|standard|deep>}"
-    lenses="$("$CFG" get ".effort.\"$level\"[]?")"
+    # A second round is a round, whatever it is called. At maxRounds 1 the fix
+    # ships on its gates, and every finding still open gets a written decision.
+    if [ -n "$since" ] && [ "$("$CFG" get .maxRounds)" = 1 ]; then
+      die "maxRounds is 1 in this repo's config, so there is no fix round to review.
+Run the gates on the fix and write one decision per finding still open."
+    fi
+    risk_lenses >/dev/null
+    lenses="$(with_risk "$level")"
     [ -n "$lenses" ] || die "no effort level \"$level\" in the config"
     slices="" solo=""
     for l in $lenses; do
@@ -245,6 +300,8 @@ case "${1:-}" in
     case "$model" in null|"") model="" ;; esac
     n=0
     printf 'effort %s%s\n' "$level" "${since:+, fix round since ${since:0:8}}"
+    [ "$("$CFG" get .lane)" = lite ] && printf 'lane   lite: one round, and no findings ledger on the pull request\n'
+    [ -n "$RISK_WHY" ] && printf 'risk   %s, adding: %s\n' "$RISK_WHY" "$("$CFG" get '.risk.lenses[]?' | tr '\n' ' ')"
     # What the orchestrator must not write. The reading discipline, the grading
     # rubric, CONFIRMED against PLAUSIBLE and the return shape are all in
     # `agents/funnel-reviewer.md`, so a dispatch that restates them pays for
@@ -270,6 +327,7 @@ case "${1:-}" in
         group="$group $l"
         while IFS= read -r d; do
           [ -z "$d" ] && continue
+          d="$(doc_path "$d")"
           printf '%s\n' "$docs" | grep -qxF "$d" || docs="$docs$d"$'\n'
         done < <("$CFG" get ".lenses.\"$l\".docs[]?")
       done
@@ -288,7 +346,7 @@ case "${1:-}" in
       fi
       docbytes=0
       for d in $docs; do
-        [ -f "$REPO_ROOT/$d" ] && docbytes=$((docbytes + $(wc -c <"$REPO_ROOT/$d")))
+        [ -f "$d" ] && docbytes=$((docbytes + $(wc -c <"$d")))
       done
       printf '\ndispatch %s   parts:%s\n' "$n" "$group"
       # The reviewer's model is its frontmatter, and a dispatch that writes one

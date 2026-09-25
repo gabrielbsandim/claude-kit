@@ -180,7 +180,9 @@ Then: **CONFIRMED** → back to stage 2 with the finding as the spec.
 request body, capped like every other section, with the reasoning in the ledger
 comment. Not a blocker.
 
-**The ledger is posted as a comment on the pull request**, once the URL exists. A
+**The ledger is posted as a comment on the pull request**, once the URL exists, in a
+repo whose config keeps one: `ledger` is false on the lite lane, and then the body is
+the only text and PLAUSIBLE reasoning is cut rather than posted. A
 comment is next to the diff, collapses on its own, and does not have to be read
 before deciding whether to review. The scratchpad file it replaced was written to
 nobody, and the body absorbed it (`evidence.md` &middot; *Why the ledger is a comment*).

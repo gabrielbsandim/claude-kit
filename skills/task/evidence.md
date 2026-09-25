@@ -350,7 +350,8 @@ thing.
 
 Cut, do not compress. The body is the only thing a human reads before deciding
    whether to review the diff, and everything worth keeping already has a better
-   home: the reasoning behind each finding goes in the ledger comment, a decision
+   home: the reasoning behind each finding goes in the ledger comment where the repo
+   keeps one and nowhere where it does not, a decision
    about the product goes in the issue, and why a non-obvious line exists goes in
    the code next to it. Measured on 2026-08-17: PR 590 carried 11902 characters
    of prose across 9 sections, 7 of them over the 600 cap, on a change whose

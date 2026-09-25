@@ -143,8 +143,19 @@ with tempfile.TemporaryDirectory() as tmp:
         ("no body at all", "gh pr create --fill", PASS),
         ("gh used for something else", "gh issue list --limit 5", PASS),
         ("not a pull request command", "npm run build", PASS),
+        # "pulls" carries no "pr", so the prefilter has to let `api` through as well,
+        # or the PATCH door is closed by the dispatcher and open in the hook.
+        ("a body PATCHed through gh api", f"gh api repos/o/r/pulls/5 -X PATCH -F body=@{long_body}", BLOCK),
+        ("a GET through gh api", "gh api repos/o/r/pulls/5", PASS),
     ]:
         equivalent(f"pr-body-gate: {name}", "pr-body-gate.py", bash(cmd), want)
+    for name, text, want in [
+        ("a long Jira comment, through the dispatcher", open(long_body, encoding="utf-8").read(), BLOCK),
+        ("a one-line Jira comment, through the dispatcher", "PR #5 is up for review.", PASS),
+    ]:
+        payload = {"hook_event_name": "PreToolUse", "tool_name": "mcp__jira__addCommentToJiraIssue",
+                   "tool_input": {"issueIdOrKey": "ABC-1", "commentBody": text}}
+        equivalent(f"pr-body-gate: {name}", "pr-body-gate.py", payload, want)
 
 print()
 print("== no-em-dash, opt-in through the dispatcher")

@@ -5,6 +5,7 @@ Every case runs the real script in a temp directory, so the template discovery
 and the exit codes are the ones a funnel run gets.
 """
 
+import json
 import os
 import re
 import shutil
@@ -204,7 +205,7 @@ check("16 the ledger budget is tighter than the body's",
       "a ledger allowed as much prose as the body is a ledger with no budget")
 # The caller's own flags come after the defaults, so a caller can still widen it.
 check("16 the defaults precede \"$@\"",
-      re.search(r'ledger\)\s+exec "\$KIT_BIN/pr-body" --max \d+ --section-max \d+ "\$@"', kit)
+      re.search(r'ledger\)(?:(?!;;)[\s\S])*?exec "\$KIT_BIN/pr-body" --max \d+ --section-max \d+ "\$@"', kit)
       is not None,
       "flags after \"$@\" would override the caller instead of defaulting")
 
@@ -232,6 +233,39 @@ table = (
 )
 out, rc, wd = run(table, args=("--max", "1000", "--section-max", "350"))
 check("17 twelve findings in rows fit the budget", rc == 0, f"rc={rc} out={out!r}")
+shutil.rmtree(wd, ignore_errors=True)
+
+# 18. A repo that sets ledger to false gets a refusal, not a measurement: a ledger
+#     that fits its budget is still a second text on a pull request whose body was
+#     meant to be the only one.
+KIT = os.path.join(ROOT, "scripts", "kit")
+wd = tempfile.mkdtemp(prefix="kit-ledger-")
+os.makedirs(os.path.join(wd, ".claude"))
+with open(os.path.join(wd, "ledger.md"), "w", encoding="utf-8") as handle:
+    handle.write("## Findings\n\nOne short line.\n")
+for config, want in (({}, 0), ({"lane": "lite"}, 3), ({"lane": "lite", "ledger": True}, 0)):
+    with open(os.path.join(wd, ".claude", "funnel.config.json"), "w") as handle:
+        json.dump(config, handle)
+    proc = subprocess.run([KIT, "ledger", "ledger.md"], cwd=wd, capture_output=True, text=True)
+    check(f"18 kit ledger under {config} exits {want}", proc.returncode == want,
+          f"rc={proc.returncode} {proc.stderr!r}")
+shutil.rmtree(wd, ignore_errors=True)
+
+# 19. The budget a repo names in its config is the one `kit pr-body` enforces, and a
+#     tighter body budget is still told the body's advice, not the ledger's.
+wd = tempfile.mkdtemp(prefix="kit-budget-")
+os.makedirs(os.path.join(wd, ".claude"))
+with open(os.path.join(wd, "body.md"), "w", encoding="utf-8") as handle:
+    handle.write("## What\n\n" + "Uma frase inteira que conta algo. " * 14 + "\n")
+for config, want in (({"prBody": {"max": 300}}, 3), ({}, 0)):
+    with open(os.path.join(wd, ".claude", "funnel.config.json"), "w") as handle:
+        json.dump(config, handle)
+    proc = subprocess.run([KIT, "pr-body", "body.md"], cwd=wd, capture_output=True, text=True)
+    check(f"19 kit pr-body under {config} exits {want}", proc.returncode == want,
+          f"rc={proc.returncode} {proc.stdout!r}")
+    if want == 3:
+        check("19 a tight body budget still gets the body's advice",
+              "not moved into a pull" in proc.stdout, proc.stdout)
 shutil.rmtree(wd, ignore_errors=True)
 
 print(f"{passes} passed, {len(failures)} failed")

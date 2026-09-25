@@ -209,6 +209,57 @@ with tempfile.TemporaryDirectory() as tmp:
         env = {"KIT_PR_BODY_MAX": "99999", "KIT_PR_BODY_SECTION_MAX": "99999"} if name == "budget raised by env" else None
         check(f"pr-body-gate: {name}", run("pr-body-gate.py", bash(cmd), env), want)
 
+# The same prose, out through the other doors. A body PATCHed through `gh api` is a
+# body; a comment, on a pull request or on Jira, gets the tighter comment budget; and
+# a repo that turned the ledger off refuses a top-level comment unless it is a reply.
+print("\n== pr-body-gate, the other doors")
+with tempfile.TemporaryDirectory() as tmp:
+    long_body = os.path.join(tmp, "long.md")
+    with open(long_body, "w", encoding="utf8") as fh:
+        fh.write("## What\n\n" + ("Uma frase inteira que conta algo sobre a mudanca. " * 60) + "\n")
+    mid = "Uma frase inteira que conta algo. " * 40
+    small = "Uma frase inteira que conta algo. " * 14
+    short = "PR #12 is up for review: https://example.com/pr/12"
+    as_json = os.path.join(tmp, "body.json")
+    with open(as_json, "w", encoding="utf8") as fh:
+        json.dump({"body": open(long_body, encoding="utf8").read()}, fh)
+    lite = os.path.join(tmp, "lite")
+    os.makedirs(os.path.join(lite, ".claude"))
+    with open(os.path.join(lite, ".claude", "funnel.config.json"), "w") as fh:
+        json.dump({"lane": "lite", "prBody": {"max": 300, "commentMax": 2000}}, fh)
+    plain = os.path.join(tmp, "plain")
+    os.makedirs(plain)
+
+    def at(cmd, cwd=plain):
+        return {**bash(cmd), "cwd": cwd}
+
+    def jira(text, cwd=plain):
+        return {"tool_name": "mcp__atlassian__addCommentToJiraIssue", "cwd": cwd,
+                "tool_input": {"issueIdOrKey": "ABC-1", "commentBody": text}}
+
+    for name, payload, want in [
+        ("a body PATCHed from a file", at(f"gh api repos/o/r/pulls/5 -X PATCH -F body=@{long_body}"), BLOCK),
+        ("a body PATCHed from JSON", at(f"gh api repos/o/r/pulls/5 --method PATCH --input {as_json}"), BLOCK),
+        ("a short body PATCHed inline", at(f"gh api repos/o/r/pulls/5 -X PATCH -f body='{short}'"), PASS),
+        ("a PATCH from stdin cannot be read, so it passes", at("jq -n '{}' | gh api repos/o/r/pulls/5 -X PATCH --input -"), PASS),
+        ("a GET of the pull request is not a write", at("gh api repos/o/r/pulls/5 --jq .body"), PASS),
+        ("a PATCH of the title only", at("gh api repos/o/r/pulls/5 -X PATCH -f title=x"), PASS),
+        ("a long pull request comment", at(f"gh pr comment 5 --body '{mid}'"), BLOCK),
+        ("a short pull request comment", at(f"gh pr comment 5 --body '{short}'"), PASS),
+        ("a long comment POSTed through the API", at(f"gh api repos/o/r/issues/5/comments -f body='{mid}'"), BLOCK),
+        ("a long Jira comment", jira(mid), BLOCK),
+        ("a one-line Jira comment", jira(short), PASS),
+        ("a lite repo refuses a top-level comment", at(f"gh pr comment 5 --body '{short}'", lite), BLOCK),
+        ("and the same through the API", at(f"gh api repos/o/r/issues/5/comments -f body='{short}'", lite), BLOCK),
+        ("unless it answers a person", at(f"KIT_REPLY=1 gh pr comment 5 --body '{short}'", lite), PASS),
+        ("a reply inside a review thread is not top level", at(f"gh api repos/o/r/pulls/comments/9/replies -f body='{short}'", lite), PASS),
+        ("a lite repo still takes a Jira comment", jira(short, lite), PASS),
+        ("the repo config's commentMax raises the comment budget", jira(mid, lite), PASS),
+        ("the repo config's max lowers the body budget", at(f"gh pr create --body '{small}'", lite), BLOCK),
+        ("that body fits the default", at(f"gh pr create --body '{small}'"), PASS),
+    ]:
+        check(f"pr-body-gate: {name}", run("pr-body-gate.py", payload), want)
+
 print()
 if failures:
     print(f"{len(failures)} falha(s): {', '.join(failures)}")

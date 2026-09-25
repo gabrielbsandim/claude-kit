@@ -2,7 +2,7 @@
 """Where a session's tokens went: the main loop, or the agents it dispatched.
 
     kit usage [--session ID] [--project DIR] [--all] [--json]
-              [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--by-stage]
+              [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--by-stage] [--by-session]
 
 `ccusage` answers what a day cost and which model spent it. What it does not
 answer, and what decides whether a stage is worth its model, is the split between
@@ -26,6 +26,12 @@ script until 0.10.0:
     kit usage --all --since 2026-08-04 --until 2026-08-16 --by-stage
     kit usage --all --since 2026-08-17 --until 2026-08-29 --by-stage
 
+`--project DIR` reads every transcript of that directory, and an explicit flag wins
+over `CLAUDE_CODE_SESSION_ID`. Until 0.15.0 the variable won, so the same command run
+inside a session answered for that one session whatever directory it was given.
+`--by-session` prints one row per session with its branch, which is the cost per task
+wherever a task is one session, as it is in the lite lane.
+
 The rates and the request de-duplication come from `scripts/context`, imported rather
 than copied, because a second copy of a rule is the defect this plugin shipped in
 `no-em-dash` until 0.9.2. Those rates became per-model in 0.10.0: a single Opus rate
@@ -40,6 +46,7 @@ import importlib.util
 import json
 import os
 import re
+import subprocess
 import sys
 
 
@@ -127,8 +134,30 @@ STAGES = (
 )
 HEAD_CHARS = 1500
 
+# The funnel's own agents, by the type the harness writes beside each subagent
+# transcript. Exact where the prompt heuristic above is a guess, so it is read first.
+AGENT_STAGES = {
+    "funnel-triage": "1 triage",
+    "funnel-implementer": "2 implementer",
+    "funnel-test-writer": "3 test-writer",
+    "funnel-reviewer": "4 reviewer",
+    "funnel-screen-lens": "4 screen-lens",
+}
+
+
+def agent_type(path):
+    meta = path[: -len(".jsonl")] + ".meta.json"
+    try:
+        with open(meta, errors="ignore") as handle:
+            return json.load(handle).get("agentType") or ""
+    except (OSError, ValueError, AttributeError):
+        return ""
+
 
 def stage_of(path):
+    known = AGENT_STAGES.get(agent_type(path).rsplit(":", 1)[-1])
+    if known:
+        return known
     try:
         with open(path, errors="ignore") as handle:
             for line in handle:
@@ -178,16 +207,77 @@ def lanes(main_files):
     return main_files, subs
 
 
+def first_branch(path):
+    """The first git branch a transcript recorded, which names the task it ran."""
+    try:
+        with open(path, errors="ignore") as handle:
+            for line in handle:
+                branch = (json.loads(line) if line.strip() else {}).get("gitBranch")
+                if branch and branch != "HEAD":
+                    return branch
+    except (OSError, ValueError):
+        pass
+    return ""
+
+
+def by_session(main_files, since=None, until=None):
+    """One row per session, its agents included, oldest first."""
+    rows = []
+    for path in main_files:
+        stem = path[: -len(".jsonl")]
+        subs = sorted(glob.glob(os.path.join(stem, "subagents", "*.jsonl")))
+        days = sorted(u["_ts"][:10] for u in CTX.read_usage(path) if u.get("_ts"))
+        row = totals([path] + subs, since, until)
+        if not row["requests"]:
+            continue
+        row.update(session=os.path.basename(stem)[:8], branch=first_branch(path),
+                   day=days[0] if days else "", agents=len(subs))
+        rows.append(row)
+    return sorted(rows, key=lambda r: r["day"])
+
+
+def load_prices(where):
+    """The repo config's `prices`, installed as overrides on the shared rate table.
+
+    Read through funnel-config so the config is found the same way every other
+    command finds it, including from a worktree whose config was never committed.
+    """
+    tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), "funnel-config")
+    try:
+        out = subprocess.run([tool, "get", ".prices"], cwd=where, capture_output=True,
+                             text=True, timeout=20).stdout.strip()
+        table = json.loads(out) if out else {}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return 0
+    for key, rate in (table or {}).items():
+        base = float(rate["in"])
+        CTX.OVERRIDES[key] = {"in": base, "out": float(rate["out"]),
+                              "cw": float(rate.get("cw", base * 1.25)),
+                              "cr": float(rate.get("cr", base * 0.1))}
+    return len(CTX.OVERRIDES)
+
+
 def resolve(cfg, args):
     if args.all:
         return sorted(glob.glob(os.path.join(cfg, "projects", "*", "*.jsonl"))), "every project"
-    session = args.session or os.environ.get("CLAUDE_CODE_SESSION_ID")
+    # An explicit flag names what to read. The environment only says where this
+    # command happens to be running, so it answers last.
+    if args.session:
+        hit = CTX.find_session(cfg, args.session)
+        if hit:
+            return [hit], "session " + args.session[:8]
+        return [], "session " + args.session[:8] + ", no transcript"
+    if args.project:
+        project = os.path.join(cfg, "projects", CTX.slug_for(os.path.abspath(args.project)))
+        files = sorted(glob.glob(os.path.join(project, "*.jsonl")))
+        return files, "every transcript for " + args.project
+    session = os.environ.get("CLAUDE_CODE_SESSION_ID")
     if session:
         hit = CTX.find_session(cfg, session)
         if hit:
             return [hit], "session " + session[:8]
         return [], "session " + session[:8] + ", no transcript"
-    project = os.path.join(cfg, "projects", CTX.slug_for(args.project or os.getcwd()))
+    project = os.path.join(cfg, "projects", CTX.slug_for(os.getcwd()))
     newest = CTX.newest_transcript(project)
     if newest:
         return [newest], "newest transcript for this directory"
@@ -202,6 +292,7 @@ def main(argv):
     ap.add_argument("--since", metavar="YYYY-MM-DD")
     ap.add_argument("--until", metavar="YYYY-MM-DD")
     ap.add_argument("--by-stage", action="store_true")
+    ap.add_argument("--by-session", action="store_true")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("-h", "--help", action="store_true")
     args = ap.parse_args(argv)
@@ -214,6 +305,7 @@ def main(argv):
             return 2
 
     cfg = os.environ.get("CLAUDE_CONFIG_DIR", os.path.expanduser("~/.claude"))
+    overrides = load_prices(args.project or os.getcwd())
     main_files, scope = resolve(cfg, args)
     if not main_files:
         print("no transcript found: %s" % scope)
@@ -225,8 +317,11 @@ def main(argv):
     total_tokens = m["tokens"] + s["tokens"]
     share = 100.0 * s["tokens"] / total_tokens if total_tokens else 0.0
     stages = by_stage(sub_files, args.since, args.until) if args.by_stage else None
+    sessions = by_session(main_files, args.since, args.until) if args.by_session else None
     if args.since or args.until:
         scope += ", %s to %s" % (args.since or "the beginning", args.until or "today")
+    if overrides:
+        scope += ", %d price override(s) from the repo config" % overrides
 
     if args.json:
         payload = {"scope": scope, "main": m, "subagents": s,
@@ -234,6 +329,8 @@ def main(argv):
                    "subagent_transcripts": len(sub_files)}
         if stages is not None:
             payload["stages"] = stages
+        if sessions is not None:
+            payload["sessions"] = sessions
         json.dump(payload, sys.stdout, indent=2)
         print()
         return 0
@@ -250,6 +347,14 @@ def main(argv):
             row = stages[name]
             per = row["cost"] / row["runs"] if row["runs"] else 0.0
             print("%-16s %6d %10.2f %10.2f" % (name, row["runs"], row["cost"], per))
+    if sessions:
+        print("\n%-10s %-9s %6s %8s %10s  %s" % ("day", "session", "agents", "Mtok", "US$", "branch"))
+        for row in sessions:
+            print("%-10s %-9s %6d %8.1f %10.2f  %s" % (
+                row["day"], row["session"], row["agents"], row["tokens"] / 1e6,
+                row["cost"], row["branch"] or "-"))
+        spent = sum(r["cost"] for r in sessions)
+        print("%d session(s), US$ %.2f each on average" % (len(sessions), spent / len(sessions)))
     print("\nList price, not what a subscription charges. The split is the number to"
           "\nread: it is what a stage costs before you decide which model it runs.")
     return 0

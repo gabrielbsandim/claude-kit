@@ -158,5 +158,65 @@ with tempfile.TemporaryDirectory() as cfg:
     check("without the flag there is no stages key", "stages" in run(cfg, "--session", SESSION),
           False)
 
+# An explicit --project beats the session the command happens to run inside. Until
+# 0.15.0 the environment won, so a question about one project was answered with the
+# caller's own session, whatever directory the flag named.
+with tempfile.TemporaryDirectory() as cfg, tempfile.TemporaryDirectory() as repo:
+    project = os.path.join(cfg, "projects", "-" + repo.strip("/").replace("/", "-"))
+    os.makedirs(project)
+    for name, out_tokens, branch in (("aaaa0000", 100, "fix/a-1"), ("bbbb0000", 300, "feat/b-2")):
+        with open(os.path.join(project, name + ".jsonl"), "w") as fh:
+            fh.write(json.dumps({"type": "user", "gitBranch": branch}) + "\n")
+            fh.write(row(name + "r", name + "m", out_tokens) + "\n")
+    build(cfg, SESSION, [row("r9", "m9", 5000)], [])
+    out = subprocess.run([sys.executable, USAGE, "--json", "--project", repo, "--by-session"],
+                         capture_output=True, text=True,
+                         env=dict(os.environ, CLAUDE_CONFIG_DIR=cfg, CLAUDE_CODE_SESSION_ID=SESSION))
+    got = json.loads(out.stdout)
+    check("--project wins over the session in the environment", got["main"]["output"], 400)
+    check("--project reads every transcript, not the newest", len(got["sessions"]), 2)
+    check("--by-session names each session by its branch",
+          [s["branch"] for s in got["sessions"]], ["fix/a-1", "feat/b-2"])
+    check("--by-session rows add up to the whole",
+          sum(s["output"] for s in got["sessions"]), got["main"]["output"])
+
+# One family spans list prices three times apart, so the version decides the rate.
+for model, rate in (("claude-sonnet-4-6", 15), ("us.anthropic.claude-sonnet-4-6", 15),
+                    ("claude-opus-4-1-20250805", 75), ("claude-opus-4-5-20251101", 25),
+                    ("claude-opus-5-5[1m]", 20), ("claude-3-5-haiku-20241022", 4)):
+    with tempfile.TemporaryDirectory() as cfg:
+        build(cfg, SESSION, [row("r1", "m1", 100, model=model)], [])
+        got = run(cfg, "--session", SESSION)
+        check("%s is priced at its own version" % model, round(got["main"]["cost"], 6),
+              round(100 * rate / 1e6, 6))
+
+# A repo on a contract that is not the list names its rates once, in its config.
+with tempfile.TemporaryDirectory() as cfg, tempfile.TemporaryDirectory() as repo:
+    os.makedirs(os.path.join(repo, ".claude"))
+    with open(os.path.join(repo, ".claude", "funnel.config.json"), "w") as fh:
+        json.dump({"prices": {"sonnet-5": {"in": 1, "out": 7}}}, fh)
+    build(cfg, SESSION, [row("r1", "m1", 100, model="claude-sonnet-5")], [])
+    got = run(cfg, "--session", SESSION, "--project", repo)
+    check("a price in the repo config overrides the list", round(got["main"]["cost"], 6),
+          round(100 * 7 / 1e6, 6))
+    check("and the scope says an override was applied", "override" in got["scope"], True)
+
+# The harness writes the agent type beside each subagent transcript. It is exact, so
+# a funnel agent whose prompt names no stage is still billed to its stage.
+with tempfile.TemporaryDirectory() as cfg:
+    project = os.path.join(cfg, "projects", "-tmp-repo")
+    subs = os.path.join(project, SESSION, "subagents")
+    os.makedirs(subs, exist_ok=True)
+    with open(os.path.join(project, SESSION + ".jsonl"), "w") as fh:
+        fh.write(row("r0", "m0", 10) + "\n")
+    with open(os.path.join(subs, "agent-b1.jsonl"), "w") as fh:
+        fh.write(json.dumps({"type": "user", "message": {"content": "Review this diff."}}) + "\n")
+        fh.write(row("b1r", "b1m", 90) + "\n")
+    with open(os.path.join(subs, "agent-b1.meta.json"), "w") as fh:
+        json.dump({"agentType": "claude-kit:funnel-reviewer"}, fh)
+    stages = run(cfg, "--session", SESSION, "--by-stage")["stages"]
+    check("the agent type names the stage when the prompt does not",
+          stages.get("4 reviewer", {}).get("output"), 90)
+
 print("\n%d ok, %d failed" % (PASS, FAIL))
 sys.exit(1 if FAIL else 0)

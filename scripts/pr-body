@@ -24,8 +24,10 @@ line when it fits.
 """
 
 import argparse
+import json
 import os
 import re
+import subprocess
 import sys
 
 DEFAULT_MAX = 2000
@@ -156,15 +158,24 @@ def measure(text, template):
     }
 
 
+def repo_budget():
+    """The repo config's `prBody`, or {} outside a configured repo."""
+    tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), "funnel-config")
+    try:
+        out = subprocess.run([tool, "get", ".prBody"], capture_output=True, text=True, timeout=10)
+        return json.loads(out.stdout) if out.stdout.strip() else {}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {}
+
+
 def main(argv):
+    repo = repo_budget()
+    body_max = int(os.environ.get("KIT_PR_BODY_MAX") or repo.get("max") or DEFAULT_MAX)
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("file")
-    ap.add_argument("--max", type=int, default=int(os.environ.get("KIT_PR_BODY_MAX", DEFAULT_MAX)))
-    ap.add_argument(
-        "--section-max",
-        type=int,
-        default=int(os.environ.get("KIT_PR_BODY_SECTION_MAX", DEFAULT_SECTION_MAX)),
-    )
+    ap.add_argument("--max", type=int, default=body_max)
+    ap.add_argument("--section-max", type=int, default=int(
+        os.environ.get("KIT_PR_BODY_SECTION_MAX") or repo.get("sectionMax") or DEFAULT_SECTION_MAX))
     ap.add_argument("--template")
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("-h", "--help", action="store_true")
@@ -215,7 +226,7 @@ def main(argv):
     # audit trail into a comment, a ledger that already is that comment has nowhere
     # left to go, so it gets compressed instead, which is the one thing the line says
     # not to do.
-    if args.max < DEFAULT_MAX:
+    if args.max < body_max:
         print(
             "  Cut, do not compress: a finding belongs in a table row, which costs no\n"
             "  prose at all, and the reasoning behind it belongs in that row's thread\n"
@@ -223,8 +234,8 @@ def main(argv):
         )
     else:
         print(
-            "  Cut, do not compress: the audit trail belongs in a pull request comment,\n"
-            "  which is one click from the diff and does not have to be read first."
+            "  Cut, do not relocate: what does not fit is left out, not moved into a pull\n"
+            "  request comment. The findings table is the one comment a task may post."
         )
     return 3
 

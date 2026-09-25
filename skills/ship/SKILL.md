@@ -29,6 +29,9 @@ Stop and report, without shipping, on any of:
 - **No commits ahead of the base.** There is nothing to ship.
 - **A commit that does not follow the repo's convention.** `kit config get .docs.commits`
   names the document. Fix the message before the pull request quotes it.
+- **A comment in the diff that is not a why.** At most two lines, and no ticket key,
+  pull request number, date or count. `kit comments` finds them in the lines the branch
+  adds; fix them before the pull request quotes the diff.
 - **No review has happened.** Ask before shipping unreviewed work; `kit review <level>`
   is minutes and a defect found here costs a round instead of a revert. If the user says
   ship anyway, say in the pull request body that it went out unreviewed.
@@ -71,15 +74,18 @@ Fill the repo's template honestly, which means four specific things:
    **600 per section**, counting what you added rather than the template, its tables, its
    checkboxes or a fenced block. Over budget it exits 3 and prints the sections by size.
 
-Cut, do not compress. The body is the only thing a human reads before deciding whether to
+Cut, do not relocate. The body is the only thing a human reads before deciding whether to
 review the diff, so length there is spent out of the reviewer's attention rather than out
-of nothing. Everything worth keeping has a nearer home: the reasoning behind a finding goes
-in a pull request comment, a product decision goes in the issue, and why a non-obvious line
-exists goes in the code beside it. Measured on 2026-08-17: one body ran to 11902 characters
-of prose across 9 sections, 7 of them over the cap, in front of a 163-line source diff.
+of nothing. What does not fit is left out, not moved into a pull request comment: a comment
+under the body is a second body, read by the same person, after they already decided. A
+product decision goes in the issue, and why a non-obvious line exists goes in the code
+beside it. Measured on 2026-08-17: one body ran to 11902 characters of prose across 9
+sections, 7 of them over the cap, in front of a 163-line source diff.
 
-What the body owes the reader and nothing more: what changed and why, what to check, what is
-knowingly left out and who owns it, and a link to the comment holding the long form.
+What the body owes the reader and nothing more: what changed and why, what to check, and
+what is knowingly left out and who owns it. One body per pull request: to change it later,
+rewrite the file and `gh api repos/{owner}/{repo}/pulls/<n> -X PATCH -F body=@<file>`,
+which the hook measures, rather than adding a comment that amends it.
 
 ## Stage 4 · Board and teardown
 

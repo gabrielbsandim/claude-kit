@@ -235,11 +235,112 @@
         }
       }
     },
+    "lane": {
+      "type": "string",
+      "enum": [
+        "full",
+        "lite"
+      ],
+      "default": "full",
+      "description": "`lite` is for a repo where the per-task cost matters more than the extra readers. No triage, implementer or test writer agent: the spec is written inline and approved, the main session implements, and one reviewer reads the diff once. It defaults maxRounds to 1, ledger to false and the browser lens off; a value the repo names still wins. `kit config check` fails a lite repo whose effort level spreads its lenses over more than one slice, because that is more than one reviewer."
+    },
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Lenses a path buys regardless of effort level. When the diff touches any of `paths`, `kit review` adds `lenses` to the level it was asked for and names the file and pattern that matched.",
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Shell case patterns matched against each changed path, so `*` crosses directories: `*/retry-logic.ts`."
+        },
+        "lenses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Keys of `lenses`."
+        }
+      }
+    },
+    "prices": {
+      "type": "object",
+      "description": "US$ per million tokens by model id substring, for a provider whose rates are not the list price. The longest matching key wins. `cw` and `cr` default to 1.25 and 0.1 times `in`. Read by `kit usage`.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "in",
+          "out"
+        ],
+        "properties": {
+          "in": {
+            "type": "number"
+          },
+          "out": {
+            "type": "number"
+          },
+          "cw": {
+            "type": "number"
+          },
+          "cr": {
+            "type": "number"
+          }
+        }
+      }
+    },
     "maxRounds": {
       "type": "integer",
       "minimum": 1,
       "description": "Cap on fix rounds. At the cap every open finding gets a written decision; silent discard is prohibited.",
       "default": 2
+    },
+    "ledger": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the funnel posts a findings ledger as a pull request comment. False means the body is the only text the funnel writes on the pull request: what does not fit is cut, not moved to a comment, and the pr-body-gate hook refuses a `gh pr comment` from the funnel."
+    },
+    "prBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The prose budgets the pr-body-gate hook and `kit pr-body` enforce, in characters. Environment variables still win, for a one-off.",
+      "properties": {
+        "max": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2000
+        },
+        "sectionMax": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 600
+        },
+        "commentMax": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1000,
+          "description": "A `gh pr comment` body, and a Jira comment written through an Atlassian MCP tool."
+        }
+      }
+    },
+    "comments": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What `kit comments` holds the added lines to. A comment says why a line that looks wrong is right; a ticket key, a pull request number, a date or an N-of-M count is refused because it is true only on the day it was written.",
+      "properties": {
+        "maxLines": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2,
+          "description": "Lines of text in one comment run. A JSDoc's delimiters do not count, and a `Usage:` block ends the count."
+        },
+        "ticket": {
+          "type": "string",
+          "description": "A Python regex for this tracker's keys, replacing the default uppercase KEY-123 pattern. `(?i)` makes it case-insensitive."
+        }
+      }
     },
     "maxParallelAgents": {
       "type": "integer",

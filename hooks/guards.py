@@ -61,11 +61,14 @@ def pre_tool_use(payload: dict) -> int:
             code = load("protect-tests").check(payload)
             if code:
                 return code
-        if "gh" in cmd and "pr" in cmd:
+        if "gh" in cmd and ("pr" in cmd or "api" in cmd):
             code = load("pr-body-gate").check(payload)
             if code:
                 return code
         return 0
+
+    if tool.endswith("addCommentToJiraIssue"):
+        return load("pr-body-gate").check(payload)
 
     if tool in ("Write", "Edit", "NotebookEdit"):
         # No prefilter: this path compares against what is on disk, so the

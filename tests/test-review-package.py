@@ -207,6 +207,91 @@ try:
     out = run(root, "--dispatches", "standard")
     check("4 a first pass never skips an empty slice",
           len(dispatched(out)) == 3 and skipped(out) == [], out)
+
+    # 6. A path buys a lens the level does not. Size is the wrong axis for risk, so
+    #    the escalation is keyed on which file moved, never on how much of it.
+    RISKY = {**OUTSIDE,
+             "effort": {"standard": ["correctness", "tests", "claims"]},
+             "risk": {"paths": ["*/retry-logic.ts"], "lenses": ["consequences"]}}
+    write(root, ".claude/funnel.config.json", json.dumps(RISKY))
+    out = run(root, "--dispatches", "standard")
+    check("6 no risky path touched, no extra lens",
+          not any("consequences" in g for g in dispatched(out)) and "risk " not in out, out)
+    write(root, "src/jobs/retry-logic.ts", "export const retries = 3\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "a risky file")
+    out = run(root, "--dispatches", "standard")
+    check("6 a risky path adds its lens",
+          any(g.strip().startswith("consequences") for g in dispatched(out)), out)
+    check("6 and names the file and the pattern that matched",
+          "src/jobs/retry-logic.ts matches */retry-logic.ts" in out, out)
+
+    # 7. At maxRounds 1 there is no fix round, so reviewing one is refused out loud
+    #    rather than quietly paid for.
+    write(root, ".claude/funnel.config.json", json.dumps({**CFG, "maxRounds": 1}))
+    out = subprocess.run([RP, "--dispatches", "standard", "--since", first], cwd=root,
+                         capture_output=True, text=True)
+    check("7 a fix round at maxRounds 1 is refused", out.returncode != 0, out.stdout)
+    check("7 and says what to do instead", "one decision per finding" in out.stderr, out.stderr)
+    out = run(root, "--dispatches", "standard")
+    check("7 the first round still runs", len(dispatched(out)) == 3, out)
+
+    # 8. The lite lane defaults to one round and no ledger, and a repo that names a
+    #    value still wins over the profile.
+    CFGTOOL = os.path.join(KIT, "scripts", "funnel-config")
+
+    def get(key):
+        return subprocess.run([CFGTOOL, "get", key], cwd=root, capture_output=True,
+                              text=True).stdout.strip()
+
+    write(root, ".claude/funnel.config.json", json.dumps({**CFG, "lane": "lite"}))
+    check("8 lite defaults to one round", get(".maxRounds") == "1", get(".maxRounds"))
+    check("8 lite defaults to no ledger", get(".ledger") == "false", get(".ledger"))
+    out = run(root, "--dispatches", "standard")
+    check("8 the plan says it is the lite lane", "lane   lite" in out, out)
+    write(root, ".claude/funnel.config.json",
+          json.dumps({**CFG, "lane": "lite", "maxRounds": 2}))
+    check("8 a value the repo names wins over the profile", get(".maxRounds") == "2",
+          get(".maxRounds"))
+    write(root, ".claude/funnel.config.json", json.dumps(CFG))
+    check("8 the full lane keeps two rounds", get(".maxRounds") == "2", get(".maxRounds"))
+
+    # 9. One reviewer is the lite lane's whole price, so `check` refuses a level whose
+    #    lenses sit on two slices, which would dispatch two.
+    write(root, ".claude/funnel.config.json", json.dumps({**CFG, "lane": "lite"}))
+    out = subprocess.run([CFGTOOL, "check"], cwd=root, capture_output=True, text=True)
+    check("9 a lite level over three slices fails check",
+          "spreads its lenses over 3 slices" in out.stderr, out.stderr)
+    LITE = {**CFG, "lane": "lite",
+            "lenses": {"correctness": {"slice": "src"}, "failure-edges": {"slice": "src"}},
+            "effort": {"standard": ["correctness", "failure-edges"]}}
+    write(root, ".claude/funnel.config.json", json.dumps(LITE))
+    out = subprocess.run([CFGTOOL, "check"], cwd=root, capture_output=True, text=True)
+    check("9 a lite level on one slice passes that check", "spreads" not in out.stderr,
+          out.stderr)
+    out = run(root, "--dispatches", "standard")
+    check("9 and dispatches exactly one reviewer", len(dispatched(out)) == 1, out)
+    write(root, ".claude/funnel.config.json", json.dumps(CFG))
+
+    # 10. A config and its lens document can both be local, untracked, and then they
+    #     exist only in the main checkout. From a worktree the document still resolves,
+    #     and prints absolute, because the reviewer has no cwd that is sure to be either.
+    LOCAL = {**CFG, "lenses": {**CFG["lenses"],
+                                "correctness": {"slice": "src", "docs": [".claude/rubric.md"]}},
+             "slices": {**CFG["slices"], "src": "origin/main...HEAD -- . ':(exclude)**/*.test.ts'"}}
+    write(root, ".claude/funnel.config.json", json.dumps(LOCAL))
+    write(root, ".claude/rubric.md", "no if inside if\n")
+    git(root, "rm", "-q", "--cached", ".claude/funnel.config.json")
+    git(root, "commit", "-q", "-m", "config goes local")
+    tree = root + "-wt"
+    git(root, "worktree", "add", "-q", "--detach", tree, "HEAD")
+    out = run(tree, "--dispatches", "standard")
+    check("10 a local lens document resolves from a worktree",
+          os.path.join(root, ".claude", "rubric.md") in out, out)
+    out = subprocess.run([CFGTOOL, "check"], cwd=tree, capture_output=True, text=True)
+    check("10 a wildcard in a slice is a pattern, not a missing path",
+          "**/*.test.ts" not in out.stderr, out.stderr)
+    git(root, "worktree", "remove", "--force", tree)
 finally:
     shutil.rmtree(root, ignore_errors=True)
 

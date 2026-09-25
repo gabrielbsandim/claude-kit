@@ -82,7 +82,9 @@ defaults_json() {
       slices: { src: "{base}...HEAD", all: "{base}...HEAD" },
       lenses: { correctness: { slice: "src", docs: [] } },
       effort: { light: ["correctness"], standard: ["correctness"], deep: ["correctness"] },
+      lane: "full",
       maxRounds: 2,
+      ledger: true,
       maxParallelAgents: 3,
       # 1 is strictly serial, which is what every version before this did. A repo
       # raises it after checking that its gates do not write over each other.
@@ -103,11 +105,18 @@ defaults_json() {
     }'
 }
 
+# The lite lane is a layer between the defaults and the repo: it changes what a repo
+# gets when it says nothing, and a repo that names a value still wins.
+LITE_PROFILE='{"maxRounds": 1, "ledger": false, "browser": {"enabled": false}}'
+
 merged() {
   local d
   d="$(defaults_json)"
   if [ -f "$CONFIG_PATH" ]; then
     jq -e . "$CONFIG_PATH" >/dev/null 2>&1 || die "$CONFIG_PATH is not valid JSON"
+    if [ "$(jq -r '.lane // "full"' "$CONFIG_PATH")" = lite ]; then
+      d="$(jq -n --argjson d "$d" --argjson p "$LITE_PROFILE" '$d * $p')"
+    fi
     # Shallow-merge per top-level key, then deep-merge the object-valued ones.
     # A repo that names three gates gets three gates, not three plus the guesses:
     # for gates, stages, slices, lenses and effort the repo value replaces the
@@ -139,7 +148,7 @@ resolve() {
     subst'
 }
 
-KNOWN_KEYS='["$schema","base","docs","branch","worktree","gates","stages","slices","lenses","effort","reviewModel","maxRounds","maxParallelAgents","gateJobs","flaky","browser","board"]'
+KNOWN_KEYS='["$schema","base","docs","branch","worktree","gates","stages","slices","lenses","effort","reviewModel","lane","risk","prices","maxRounds","ledger","maxParallelAgents","gateJobs","flaky","browser","board","prBody","comments"]'
 
 cmd="${1:-print}"
 case "$cmd" in
@@ -149,7 +158,9 @@ case "$cmd" in
 
   get)
     [ $# -ge 2 ] || die "usage: funnel-config get <jq-path>"
-    merged | resolve | jq -r "$2 // empty"
+    # Not `// empty`: jq's alternative treats false as missing, so every boolean
+    # the config sets to false printed nothing at all.
+    merged | resolve | jq -r "(try ($2)) | select(. != null)"
     ;;
 
   gates)
@@ -226,6 +237,34 @@ case "$cmd" in
       fi
     done < <(merged | jq -r '.effort // {} | to_entries[] | .key as $k | .value[] | "\($k) \(.)"')
 
+    lane="$(merged | jq -r '.lane // "full"')"
+    case "$lane" in
+      full) ;;
+      lite)
+        printf 'lane     lite: one reviewer, %s round(s), ledger %s\n' \
+          "$(merged | jq -r .maxRounds)" "$(merged | jq -r 'if .ledger then "on" else "off" end')"
+        # One reviewer means one slice per level. Lenses spread over two slices are two
+        # dispatches, which is the full lane's cost under the lite lane's name.
+        while IFS= read -r level; do
+          [ -z "$level" ] && continue
+          n="$(merged | jq -r --arg l "$level" '[.effort[$l][] as $x | .lenses[$x] | select(.readsOutsideDiff != true) | .slice] | unique | length')"
+          if [ "$n" -gt 1 ]; then
+            printf 'lane     lite, but effort %s spreads its lenses over %s slices, so it dispatches %s reviewers\n' "$level" "$n" "$n" >&2
+            status=1
+          fi
+        done < <(merged | jq -r '.effort // {} | keys[]')
+        ;;
+      *) printf 'lane     must be "full" or "lite", got "%s"\n' "$lane" >&2; status=1 ;;
+    esac
+
+    while IFS= read -r lens; do
+      [ -z "$lens" ] && continue
+      if [ "$(merged | jq -r --arg l "$lens" '.lenses[$l] // "MISSING"')" = MISSING ]; then
+        printf 'risk     names lens "%s", which is not defined\n' "$lens" >&2
+        status=1
+      fi
+    done < <(merged | jq -r '.risk.lenses[]? // empty')
+
     # Every stage must name gates that exist.
     while IFS= read -r pair; do
       stage="${pair%% *}"; gate="${pair##* }"
@@ -248,6 +287,8 @@ case "$cmd" in
         case "$token" in ":(exclude)"*) token="${token#:(exclude)}" ;; esac
         token="${token%\'}"; token="${token#\'}"
         [ -z "$token" ] && continue
+        # A wildcard names a pattern, not a path, so there is nothing to test for.
+        case "$token" in *"*"*|":("*) continue ;; esac
         if [ ! -e "$REPO_ROOT/$token" ]; then
           printf 'slice    %s names "%s", which does not exist in this repo\n' "$name" "$token" >&2
           status=1

@@ -13,6 +13,8 @@
 #   kit issues tree <n>        an epic and its children, with state
 #   kit pr-body <file>         how much prose the pull request body adds
 #   kit ledger <file>          the same, on the tighter budget a comment gets
+#   kit comments               comment problems in the lines this branch adds
+#   kit ratchet --config F     ESLint violations this branch adds, not inherits
 #   kit context                how full the context is, and whether to compact
 #   kit usage                  what the main loop spent, and what the agents spent
 #   kit doctor                 is this machine ready
@@ -49,7 +51,16 @@ case "$cmd" in
   pr-body)  exec "$KIT_BIN/pr-body" "$@" ;;
   # The same measurement, on the budget a comment gets. Flags after "$@" would win
   # over the caller's, so these go first.
-  ledger)   exec "$KIT_BIN/pr-body" --max 1000 --section-max 350 "$@" ;;
+  ledger)
+    # Refused rather than measured: in a repo that turned the ledger off, a ledger
+    # that fits its budget is still a second text nobody asked for.
+    if [ "$("$KIT_BIN/funnel-config" get .ledger 2>/dev/null || true)" = false ]; then
+      printf 'this repo sets ledger to false: the pull request body is the only text,\nso cut what does not fit it instead of posting it as a comment\n' >&2
+      exit 3
+    fi
+    exec "$KIT_BIN/pr-body" --max 1000 --section-max 350 "$@" ;;
+  comments) exec "$KIT_BIN/new-code" comments "$@" ;;
+  ratchet)  exec "$KIT_BIN/new-code" ratchet "$@" ;;
   context)  exec "$KIT_BIN/context" "$@" ;;
   usage)    exec "$KIT_BIN/usage" "$@" ;;
   worktree) exec "$KIT_BIN/worktree" "$@" ;;

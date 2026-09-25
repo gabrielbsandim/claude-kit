@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+"""Two gates that judge only what this branch adds, never what it inherited.
+
+    kit comments [--base REF]
+    kit ratchet --eslint CMD --config FILE [--base REF] [--ext .ts,.tsx]
+
+Both read the change as the merge base with `origin/<base>` against the working
+tree, untracked files included, so they gate the code before it is committed and
+agree with the tree `kit gate` writes its receipt for.
+
+`comments` holds a code comment to what a reviewer needs from it: why a line that
+looks wrong is right, in at most `comments.maxLines` lines of text (2 unless the
+config says otherwise). It refuses, in added lines only, a comment run longer than
+that, and a comment carrying a ticket key, a pull request number, a date or an
+"N of M" count. Those four belong in the tracker and the commit, where they stay
+true; in the code they are true on the day they were written.
+
+`ratchet` runs ESLint with a config of its own over every changed file, once at the
+merge base and once as it is now, and fails only on a violation the base did not
+have. A strict rule set applied absolutely fails every legacy file a change touches,
+and a gate that is red on arrival is a gate that gets switched off. Compared by rule
+and message, not by line, so moving code does not count as adding a violation, and
+making an already too complex function more complex does.
+"""
+
+import argparse
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+from collections import Counter
+
+BIN_DIR = os.path.dirname(os.path.abspath(__file__))
+CFG = os.path.join(BIN_DIR, "funnel-config")
+
+SLASH = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs", ".java", ".kt",
+         ".swift", ".c", ".cc", ".cpp", ".h", ".cs", ".scala", ".dart", ".css", ".scss"}
+HASH = {".py", ".sh", ".bash", ".rb", ".yml", ".yaml", ".toml"}
+DASHES = {".sql"}
+
+# A directive is an instruction to a tool, not prose for a reader.
+DIRECTIVE = re.compile(
+    r"eslint-(disable|enable)|@ts-(ignore|expect-error|nocheck)|prettier-ignore|"
+    r"(istanbul|c8) ignore|noqa|type:\s*ignore|pylint:|biome-ignore|#region|#endregion|"
+    r"@vitest-environment|@jest-environment|<reference |@jsx|shellcheck |language=")
+TICKET = r"\b[A-Z][A-Z0-9]{1,9}-\d{1,6}\b"
+NOT_TICKETS = {"UTF", "SHA", "ISO", "AES", "RFC", "TLS", "SSL", "HTTP", "HTTPS", "ES", "MD",
+               "CRC", "ECMA", "IEEE", "CVE", "ARM", "X", "UUID", "BASE", "INT", "UINT", "FLOAT"}
+DATE = re.compile(r"\b20\d\d-\d\d-\d\d\b|\b\d{1,2}/\d{1,2}/20\d\d\b")
+PR_REF = re.compile(r"(?<![\w&])#\d{2,}\b|\b(PR|pull request|issue)\s+#?\d{2,}\b", re.I)
+COUNT = re.compile(r"\b\d+\s+(of|out of)\s+(the\s+)?\d+\b", re.I)
+
+
+def die(msg, code=2):
+    print(msg, file=sys.stderr)
+    sys.exit(code)
+
+
+def git(*args, check=True):
+    out = subprocess.run(["git", *args], capture_output=True, text=True)
+    if check and out.returncode != 0:
+        die("git %s failed: %s" % (" ".join(args), out.stderr.strip()))
+    return out.stdout
+
+
+def config(key):
+    out = subprocess.run([CFG, "get", key], capture_output=True, text=True)
+    return out.stdout.strip()
+
+
+def merge_base(explicit):
+    ref = explicit or "origin/" + (config(".base") or "main")
+    return git("merge-base", ref, "HEAD").strip()
+
+
+def changed(base):
+    """(path now, path at the base or None) for every added, modified or renamed file."""
+    pairs = []
+    for line in git("diff", "--name-status", "-M", "--diff-filter=AMR", base).splitlines():
+        parts = line.split("\t")
+        if parts[0].startswith("R"):
+            pairs.append((parts[2], parts[1]))
+        else:
+            pairs.append((parts[1], parts[1] if parts[0] != "A" else None))
+    for path in git("ls-files", "--others", "--exclude-standard").splitlines():
+        pairs.append((path, None))
+    return pairs
+
+
+def added_lines(base, path, is_new):
+    """{line number: text} of the lines this change added to one file."""
+    if is_new:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                return {n: text.rstrip("\n") for n, text in enumerate(handle, 1)}
+        except OSError:
+            return {}
+    out, number = {}, 0
+    for line in git("diff", "-U0", base, "--", path).splitlines():
+        hunk = re.match(r"@@ -\S+ \+(\d+)", line)
+        if hunk:
+            number = int(hunk.group(1))
+            continue
+        if line.startswith("+") and not line.startswith("+++"):
+            out[number] = line[1:]
+            number += 1
+    return out
+
+
+def comment_text(line, ext, in_block):
+    """(comment text or None, whether the line is only a comment, still inside a block)."""
+    stripped = line.strip()
+    if ext in HASH:
+        return hash_comment(stripped)
+    if ext in DASHES:
+        hit = re.search(r"--\s?(.*)$", stripped)
+        return (hit.group(1), stripped.startswith("--"), False) if hit else (None, False, False)
+    if in_block or stripped.startswith("/*"):
+        body = stripped[2:] if stripped.startswith("/*") else stripped
+        return body.split("*/")[0].lstrip("*").strip(), True, "*/" not in body
+    if stripped == "*" or stripped.startswith(("* ", "*/")):
+        return stripped.lstrip("*/ ").strip(), True, False
+    hit = re.search(r"(^|[^:])//\s?(.*)$", stripped)
+    if not hit:
+        return None, False, False
+    return hit.group(2), stripped.startswith("//"), False
+
+
+def hash_comment(stripped):
+    if stripped.startswith("#!"):
+        return None, False, False
+    hit = re.search(r"(^|\s)#\s?(.*)$", stripped)
+    if not hit:
+        return None, False, False
+    return hit.group(2), stripped.startswith("#"), False
+
+
+def file_comment_problems(base, path, is_new, max_lines, ticket):
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in SLASH | HASH | DASHES:
+        return []
+    problems, run, in_block = [], [], False
+    for number, line in sorted(added_lines(base, path, is_new).items()):
+        text, whole_line, in_block = comment_text(line, ext, in_block)
+        if text is None or DIRECTIVE.search(text):
+            run = flush(run, path, max_lines, problems)
+            continue
+        reason = content_problem(text, ticket)
+        if reason:
+            problems.append((path, number, reason, text))
+        if not whole_line:
+            run = flush(run, path, max_lines, problems)
+            continue
+        if run and number != run[-1][0] + 1:
+            run = flush(run, path, max_lines, problems)
+        run.append((number, text))
+    flush(run, path, max_lines, problems)
+    return problems
+
+
+def cmd_comments(args):
+    max_lines = int(config(".comments.maxLines") or 2)
+    ticket = re.compile(config(".comments.ticket") or TICKET)
+    base = merge_base(args.base)
+    problems = []
+    for path, old in changed(base):
+        problems += file_comment_problems(base, path, old is None, max_lines, ticket)
+    for path, number, reason, text in problems:
+        print("%s:%d  %s  | %s" % (path, number, reason, text[:100]))
+    if not problems:
+        print("comments ok, added lines only, at most %d line(s) each" % max_lines)
+        return 0
+    print("\n%d comment problem(s) in added lines. A comment says why, in at most %d "
+          "line(s),\nand leaves tickets, dates and counts to the tracker and the "
+          "commit." % (len(problems), max_lines))
+    return 1
+
+
+def content_problem(text, ticket):
+    keys = [h.group(0) for h in ticket.finditer(text) if h.group(0).split("-")[0] not in NOT_TICKETS]
+    if keys:
+        return "ticket key %s" % keys[0]
+    for pattern, name in ((DATE, "date"), (PR_REF, "pull request or issue number"),
+                          (COUNT, "count")):
+        hit = pattern.search(text)
+        if hit:
+            return "%s %s" % (name, hit.group(0))
+    return None
+
+
+def flush(run, path, max_lines, problems):
+    """Records a run of comment lines longer than the cap, counting only lines with text,
+    and returns the empty run that follows it. A `Usage:` block is how to run the file,
+    not an explanation of it, so it ends the count."""
+    usage = next((i for i, (_, t) in enumerate(run) if t.strip().lower() in ("usage", "usage:")), len(run))
+    worded = [(n, t) for n, t in run[:usage] if t.strip(" */-#")]
+    if len(worded) > max_lines:
+        problems.append((path, run[0][0], "%d comment lines, over %d" % (len(worded), max_lines),
+                         worded[0][1]))
+    return []
+
+
+def eslint_flags(eslint, cfg):
+    """Legacy flags for an eslintrc config, flat flags for a flat one."""
+    version = subprocess.run(eslint + " --version", shell=True, capture_output=True,
+                             text=True).stdout.strip().lstrip("v")
+    major = int(version.split(".")[0]) if version[:1].isdigit() else 9
+    legacy = cfg.endswith(".json") or os.path.basename(cfg).startswith(".eslintrc")
+    env = dict(os.environ)
+    if legacy and major >= 9:
+        env["ESLINT_USE_FLAT_CONFIG"] = "false"
+    flags = ["--no-eslintrc"] if legacy or major < 9 else []
+    return flags + ["-c", cfg, "--no-ignore", "-f", "json"], env
+
+
+def lint(eslint, flags, env, paths=None, stdin=None, name=None):
+    cmd = eslint + " " + " ".join(shlex.quote(f) for f in flags)
+    if stdin is not None:
+        cmd += " --stdin --stdin-filename " + shlex.quote(name)
+    else:
+        cmd += " " + " ".join(shlex.quote(p) for p in paths)
+    out = subprocess.run(cmd, shell=True, input=stdin, capture_output=True, text=True, env=env)
+    try:
+        return json.loads(out.stdout or "[]")
+    except ValueError:
+        die("eslint gave no JSON:\n%s" % (out.stderr or out.stdout)[-2000:])
+
+
+def measure(message):
+    """(rule, message with its numbers blanked, the first number or None).
+
+    A metric rule puts its measurement in the message, so an unchanged function that
+    grew one line reads as a different message. Blanked, the two compare, and the
+    number says whether the change made it worse.
+    """
+    text = message.get("message") or ""
+    number = re.search(r"\d+", text)
+    return (message.get("ruleId"), re.sub(r"\d+", "N", text),
+            int(number.group(0)) if number else None)
+
+
+def at_base(args, flags, env, base, path, old):
+    """What the base version of this file already violated: (rule, template) to numbers."""
+    before = {}
+    if old is None:
+        return before
+    source = git("show", "%s:%s" % (base, old), check=False)
+    for result in lint(args.eslint, flags, env, stdin=source, name=path):
+        for rule, template, number in map(measure, result["messages"]):
+            before.setdefault((rule, template), []).append(number)
+    return before
+
+
+def inherited(before, rule, template, number):
+    """Consumes the base violation this one is, if the change did not make it worse."""
+    candidates = [n for n in before.get((rule, template), []) if n is None or number is None or n >= number]
+    if not candidates:
+        return False
+    before[(rule, template)].remove(min(candidates, key=lambda n: -1 if n is None else n))
+    return True
+
+
+def unmatched(path, messages, before):
+    """The messages the base did not already have, as (severity, row)."""
+    out = []
+    for message in messages:
+        rule, template, number = measure(message)
+        if inherited(before, rule, template, number):
+            continue
+        out.append((message.get("severity"),
+                    (path, message.get("line", 0), rule or "parse", message.get("message"))))
+    return out
+
+
+def cmd_ratchet(args):
+    exts = {e if e.startswith(".") else "." + e for e in args.ext.split(",")}
+    base = merge_base(args.base)
+    files = [(p, o) for p, o in changed(base) if os.path.splitext(p)[1] in exts]
+    if not files:
+        print("ratchet  no changed file with %s" % ",".join(sorted(exts)))
+        return 0
+    flags, env = eslint_flags(args.eslint, args.config)
+    now = {os.path.relpath(r["filePath"]): r["messages"]
+           for r in lint(args.eslint, flags, env, paths=[p for p, _ in files])}
+    found, total = [], 0
+    for path, old in files:
+        messages = now.get(path, [])
+        total += len(messages)
+        found += unmatched(path, messages, at_base(args, flags, env, base, path, old))
+    errors = [row for severity, row in found if severity == 2]
+    warnings = [row for severity, row in found if severity != 2]
+    for label, rows in (("error", errors), ("warning", warnings)):
+        for path, line, rule, text in rows:
+            print("%s:%s  %s %s  %s" % (path, line, label, rule, text))
+    print("\nratchet  %d file(s), %d new error(s), %d new warning(s), %d inherited from the base"
+          % (len(files), len(errors), len(warnings), total - len(found)))
+    return 1 if errors else 0
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(prog="kit", add_help=False)
+    ap.add_argument("command", nargs="?", choices=["comments", "ratchet"])
+    ap.add_argument("--base")
+    ap.add_argument("--eslint", default="npx --no-install eslint")
+    ap.add_argument("--config")
+    ap.add_argument("--ext", default=".ts,.tsx,.js,.jsx,.mjs,.cjs")
+    ap.add_argument("-h", "--help", action="store_true")
+    args = ap.parse_args(argv)
+    if args.help or not args.command:
+        print(__doc__.strip())
+        return 0
+    root = git("rev-parse", "--show-toplevel").strip()
+    os.chdir(root)
+    if args.command == "comments":
+        return cmd_comments(args)
+    if not args.config:
+        die("kit ratchet needs --config, the ESLint config the new lines are held to")
+    args.config = os.path.abspath(args.config)
+    return cmd_ratchet(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
