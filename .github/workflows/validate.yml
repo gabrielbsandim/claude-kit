@@ -130,6 +130,18 @@ jobs:
           git config --global user.name ci
           python3 tests/test-new-code.py
 
+      - name: A gate receipt follows the working tree even when staging fails
+        run: |
+          git config --global user.email ci@example.com
+          git config --global user.name ci
+          python3 tests/test-gate-tree-sha.py
+
+      - name: The guards hook blocks the same commands as before
+        run: python3 tests/test-guards.py
+
+      - name: The hook shim finds the newest copy and never breaks a tool call
+        run: python3 tests/test-kit-hook.py
+
       - name: Frontmatter parses under a strict YAML parser
         run: |
           pip install --quiet pyyaml
