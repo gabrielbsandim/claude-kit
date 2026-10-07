@@ -80,6 +80,12 @@ jobs:
       - name: Gate concurrency
         run: python3 tests/test-gate-jobs.py
 
+      - name: Gate covers
+        run: |
+          git config --global user.email ci@example.com
+          git config --global user.name ci
+          python3 tests/test-gate-covers.py
+
       - name: Worktree teardown verdicts
         run: |
           git config --global user.email ci@example.com

@@ -129,6 +129,19 @@ mkdir -p "$RECEIPTS"
 tree="$(work_tree_sha)"
 failed=0 ran=0 skipped=0
 
+# A gate that runs a superset of another, coverage over the plain suite, proves that
+# one too, so its pass leaves their receipts and nothing runs the suite twice.
+write_covered() {
+  local g="$1" cg cc r
+  for cg in $("$CFG" get ".gates.\"$g\".covers[]?"); do
+    cc="$("$CFG" get ".gates.\"$cg\".cmd")"
+    [ -n "$cc" ] || continue
+    r="$RECEIPTS/$tree.$cg.$(cmd_hash "$cc")"
+    { date -u +%Y-%m-%dT%H:%M:%SZ; printf 'cmd: %s\ncovered by: %s\n' "$cc" "$g"; } >"$r.$$"
+    mv -f "$r.$$" "$r"
+  done
+}
+
 # One gate, start to receipt. Everything it reports goes through the status file
 # rather than straight to the terminal, because with two gates running at once a
 # direct write interleaves mid-line and the slower gate's failure log ends up
@@ -147,6 +160,7 @@ run_gate() {
     # atomic within the directory, so a receipt is either absent or complete.
     { date -u +%Y-%m-%dT%H:%M:%SZ; printf 'cmd: %s\nseconds: %s\n' "$c" "$dur"; } >"$receipt.$$"
     mv -f "$receipt.$$" "$receipt"
+    write_covered "$g"
     printf 'pass %s\n' "$dur" >"$status"
     rm -f "$log"
   else

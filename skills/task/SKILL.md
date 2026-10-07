@@ -413,8 +413,11 @@ waits for this stage; the ones that read source do not.
 is the test writer's defect, unless the config already quarantines it.
 
 Coverage is measured across the whole run, so it has no incremental form and is
-the most expensive gate there is. It runs **once, before the push**, not once
-per round. The one exception: a fix round that added production code and no test
+the most expensive gate there is. It runs **once per tree**, not once per round:
+when the `tests` stage runs it, `kit gate ship` skips it on that same tree, and a
+gate it `covers` (the plain suite) gets its receipt from that pass. Never run a
+suite gate after coverage on one tree, and never run a gate a receipt already
+proves. The one exception: a fix round that added production code and no test
 re-runs it early, because nothing downstream would catch that.
 
 ## Stage 4 · Adversarial review, grouped by slice

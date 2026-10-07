@@ -96,6 +96,13 @@
           "exclusive": {
             "type": "boolean",
             "description": "This gate must run alone. Set it on anything that writes where another gate reads or writes: a coverage report directory, a build output, a shared test cache. Whether two commands can share a working tree depends on what they write, which is why this is declared and not inferred."
+          },
+          "covers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Gates this one proves by passing, because it runs a superset of their work: coverage over the plain suite. A pass also writes their receipts for the same tree, so a later stage, or a pre-push hook verifying them, does not run that work again. Every name has to be a key of `gates`."
           }
         }
       }

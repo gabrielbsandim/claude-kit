@@ -304,6 +304,17 @@ case "$cmd" in
       }
     done < <(merged | jq -r '.lenses.claims.grepTargets[]? // empty')
 
+    while IFS=$'\t' read -r g cg; do
+      [ -z "$g" ] && continue
+      if [ "$g" = "$cg" ]; then
+        printf 'gate     %s covers itself\n' "$g" >&2; status=1; continue
+      fi
+      [ -n "$(merged | jq -r --arg c "$cg" '.gates[$c].cmd // empty')" ] || {
+        printf 'gate     %s covers "%s", which is not a gate with a cmd\n' "$g" "$cg" >&2
+        status=1
+      }
+    done < <(merged | jq -r '.gates // {} | to_entries[] | .key as $g | (.value.covers // [])[] | [$g, .] | @tsv')
+
     jobs="$(merged | jq -r '.gateJobs // 1')"
     case "$jobs" in
       *[!0-9]*|"") printf 'gateJobs must be a positive integer, got "%s"\n' "$jobs" >&2; status=1 ;;

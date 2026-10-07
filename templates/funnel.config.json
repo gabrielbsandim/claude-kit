@@ -37,7 +37,10 @@
       "cmd": "npx vitest run --changed {base}"
     },
     "coverage": {
-      "cmd": "npm run test:coverage"
+      "cmd": "npm run test:coverage",
+      "covers": [
+        "test"
+      ]
     }
   },
   "stages": {
@@ -51,12 +54,11 @@
       "test_changed"
     ],
     "tests": [
-      "test"
+      "coverage"
     ],
     "ship": [
       "lint",
       "types",
-      "test",
       "coverage"
     ]
   },
