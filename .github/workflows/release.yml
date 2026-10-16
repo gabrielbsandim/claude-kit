@@ -51,6 +51,7 @@ jobs:
       # which is why this workflow never commits anything: nothing here needs to write
       # to main, so branch protection needs no exception for a bot.
       - name: Tag and release, if this version is new
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.read.outputs.version }}
@@ -95,3 +96,18 @@ jobs:
           set -e
           gh release view "$tag" >/dev/null || { echo "gave up creating $tag" >&2; exit 1; }
           echo "released $tag at $SHA"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+
+      # Unversioned asset names, so releases/latest/download/<name>.zip is a link a
+      # marketplace listing can keep. Only the run that created the release uploads.
+      - name: Attach the standalone skill packages
+        if: steps.release.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.read.outputs.version }}
+        run: |
+          set -e
+          for manifest in export/*.json; do
+            python3 scripts/export-skill "$(basename "$manifest" .json)" --out dist --zip
+          done
+          gh release upload "v$VERSION" dist/*.zip --clobber
