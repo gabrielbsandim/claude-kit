@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""Package one skill as a standalone SKILL.md folder that runs outside this plugin.
+
+    kit export-skill <name> [--out DIR] [--zip] [--root DIR]
+
+The plugin's skills stay the source. export/<name>.json lists exact-text
+replacements that strip what only exists inside claude-kit, and every `from`
+must match, so a skill edited without its manifest fails here instead of
+shipping a stale package.
+
+Exits 2 on a manifest that no longer matches, 3 when the output still names
+something only claude-kit has, 1 on anything else. Prints the package path on 0.
+"""
+
+import argparse
+import json
+import os
+import re
+import shutil
+import sys
+
+DEFAULT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+MAX_NAME = 64
+MAX_DESCRIPTION = 1024
+
+KIT_ONLY = [
+    (re.compile(r"`kit [a-z]"), "a kit subcommand"),
+    (re.compile(r"funnel-(triage|implementer|test-writer|reviewer|screen-lens)"), "a funnel subagent"),
+    (re.compile(r"funnel\.config"), "the funnel config"),
+    (re.compile(r"CLAUDE_KIT_"), "a claude-kit environment variable"),
+    (re.compile(r"task funnel"), "the task funnel"),
+    (re.compile(r"kb_reindex"), "the author's vault server"),
+]
+
+
+def die(message, code=1):
+    print(message, file=sys.stderr)
+    sys.exit(code)
+
+
+def read(path):
+    with open(path, encoding="utf-8") as handle:
+        return handle.read()
+
+
+def write(path, text):
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+
+
+def load_manifest(root, name):
+    path = os.path.join(root, "export", f"{name}.json")
+    if not os.path.isfile(path):
+        return {}
+    try:
+        return json.loads(read(path))
+    except json.JSONDecodeError as error:
+        die(f"{path}: {error}")
+
+
+def apply_replacements(text, replacements):
+    stale = [r["from"] for r in replacements if r["from"] not in text]
+    if stale:
+        listed = "\n".join(f"  {s!r}" for s in stale)
+        die(f"manifest text no longer in SKILL.md, update export/ to match:\n{listed}", 2)
+    for r in replacements:
+        text = text.replace(r["from"], r["to"])
+    return text
+
+
+def split_frontmatter(text):
+    match = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+    if not match:
+        die("SKILL.md has no frontmatter block")
+    return match.group(1), text[match.end():]
+
+
+def frontmatter_value(block, key):
+    match = re.search(rf"^{key}:\s*(.*)$", block, re.M)
+    if not match:
+        return ""
+    return match.group(1).strip().strip('"').strip("'")
+
+
+def check_spec(block, name):
+    declared = frontmatter_value(block, "name")
+    if declared != name:
+        die(f"frontmatter name {declared!r} does not match the folder {name!r}")
+    if len(name) > MAX_NAME or not NAME_RE.match(name):
+        die(f"name {name!r} is not lowercase-hyphenated within {MAX_NAME} characters")
+    description = frontmatter_value(block, "description")
+    if not description:
+        die("frontmatter has no description")
+    if len(description) > MAX_DESCRIPTION:
+        die(f"description is {len(description)} characters, the standard allows {MAX_DESCRIPTION}")
+
+
+def extend_frontmatter(block, plugin, compatibility):
+    lines = [block]
+    if not re.search(r"^license:", block, re.M):
+        lines.append(f"license: {plugin.get('license', 'MIT')}")
+    if compatibility and not re.search(r"^compatibility:", block, re.M):
+        lines.append(f"compatibility: {json.dumps(compatibility)}")
+    if not re.search(r"^metadata:", block, re.M):
+        lines.append("metadata:")
+        lines.append(f"  version: {json.dumps(plugin.get('version', ''))}")
+        lines.append(f"  source: {json.dumps(plugin.get('homepage', ''))}")
+    return "\n".join(lines)
+
+
+def kit_only_hits(folder):
+    hits = []
+    for base, _, files in os.walk(folder):
+        for file in sorted(files):
+            if not file.endswith(".md"):
+                continue
+            path = os.path.join(base, file)
+            for number, line in enumerate(read(path).splitlines(), 1):
+                for pattern, label in KIT_ONLY:
+                    if pattern.search(line):
+                        hits.append(f"  {os.path.relpath(path, folder)}:{number}  {label}: {line.strip()}")
+    return hits
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="kit export-skill")
+    parser.add_argument("name")
+    parser.add_argument("--out", default=None, help="output directory, default <root>/dist")
+    parser.add_argument("--zip", action="store_true", help="also write <out>/<name>.zip")
+    parser.add_argument("--root", default=DEFAULT_ROOT, help="plugin root to export from")
+    args = parser.parse_args()
+
+    root = os.path.abspath(args.root)
+    source = os.path.join(root, "skills", args.name)
+    if not os.path.isfile(os.path.join(source, "SKILL.md")):
+        die(f"no skill named {args.name!r} in {os.path.join(root, 'skills')}")
+    plugin = json.loads(read(os.path.join(root, ".claude-plugin", "plugin.json")))
+    manifest = load_manifest(root, args.name)
+
+    out = os.path.abspath(args.out or os.path.join(root, "dist"))
+    target = os.path.join(out, args.name)
+    shutil.rmtree(target, ignore_errors=True)
+    shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__"))
+    license_path = os.path.join(root, "LICENSE")
+    if os.path.isfile(license_path):
+        shutil.copy(license_path, os.path.join(target, "LICENSE"))
+
+    skill_path = os.path.join(target, "SKILL.md")
+    text = apply_replacements(read(skill_path), manifest.get("replace", []))
+    block, body = split_frontmatter(text)
+    check_spec(block, args.name)
+    block = extend_frontmatter(block, plugin, manifest.get("compatibility", ""))
+    write(skill_path, f"---\n{block}\n---\n{body}")
+
+    hits = kit_only_hits(target)
+    if hits:
+        shutil.rmtree(target, ignore_errors=True)
+        die(f"{args.name} still depends on claude-kit, add replacements to export/{args.name}.json:\n" + "\n".join(hits), 3)
+
+    if args.zip:
+        archive = shutil.make_archive(target, "zip", out, args.name)
+        print(archive)
+    print(target)
+
+
+if __name__ == "__main__":
+    main()

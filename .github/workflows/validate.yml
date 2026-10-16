@@ -148,6 +148,11 @@ jobs:
       - name: The hook shim finds the newest copy and never breaks a tool call
         run: python3 tests/test-kit-hook.py
 
+      - name: A skill exports standalone, or is refused for what still needs the plugin
+        run: |
+          pip install --quiet pyyaml
+          python3 tests/test-export-skill.py
+
       - name: Frontmatter parses under a strict YAML parser
         run: |
           pip install --quiet pyyaml
@@ -160,7 +165,7 @@ jobs:
         run: npx --yes agnix@0.49.0 .
 
       - name: Templates are valid JSON
-        run: for f in templates/*.json .claude-plugin/*.json; do jq -e . "$f" > /dev/null; done
+        run: for f in templates/*.json .claude-plugin/*.json export/*.json; do jq -e . "$f" > /dev/null; done
 
   no-em-dash:
     runs-on: ubuntu-latest

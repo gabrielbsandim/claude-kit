@@ -1,0 +1,29 @@
+{
+  "listing": {
+    "title": "Investigate: verified answers about your codebase",
+    "summary": "Turns a question about your system into a written answer where every claim that matters is measured with a command, never guessed. Read-only: no branch, no code change.",
+    "tags": [
+      "debugging",
+      "root-cause",
+      "codebase-questions",
+      "read-only",
+      "evidence"
+    ],
+    "price": "free"
+  },
+  "compatibility": "Any agent that can run shell commands and read files. Parallel subagents make it faster but are not required.",
+  "replace": [
+    {
+      "from": "becomes the spec for the task funnel; you do not edit files here. An\ninvestigation that quietly turns into a change skips triage, tests and review,\nwhich is every gate the funnel has.",
+      "to": "becomes the spec for a separate change; you do not edit files here. An\ninvestigation that quietly turns into a change skips triage, tests and review,\nwhich is every gate a change is supposed to pass."
+    },
+    {
+      "from": "and the concurrency ceiling is `kit config get .maxParallelAgents`.",
+      "to": "and three at once is the ceiling. Without subagents, take the angles in turn."
+    },
+    {
+      "from": "- If the fix is then asked for, hand the finding to the task funnel as its spec.",
+      "to": "- If the fix is then asked for, the finding is its spec."
+    }
+  ]
+}

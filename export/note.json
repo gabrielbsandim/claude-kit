@@ -1,0 +1,33 @@
+{
+  "listing": {
+    "title": "Note: facts your knowledge base can re-check",
+    "summary": "Writes one fact per markdown note with the date it was measured and the command that re-measures it, so a vault never goes quietly stale.",
+    "tags": [
+      "knowledge-base",
+      "memory",
+      "markdown",
+      "documentation",
+      "vault"
+    ],
+    "price": "free"
+  },
+  "compatibility": "Any agent that can write files. Works with any folder of markdown notes; a search server for the vault is optional.",
+  "replace": [
+    {
+      "from": "1. `$CLAUDE_KIT_VAULT`, if set.",
+      "to": "1. `$NOTE_VAULT`, if set."
+    },
+    {
+      "from": "Ver [[related-note]].",
+      "to": "See [[related-note]]."
+    },
+    {
+      "from": "With the vault's MCP server that\nis `kb_reindex`; otherwise whatever the vault's own indexer is.",
+      "to": "With an MCP search server that\nis its reindex tool; otherwise whatever the vault's own indexer is."
+    },
+    {
+      "from": "> Measured 2026-08-17: obranova is pt-BR, the other seven are English. Reproduce with\n> `for r in ~/work/*/; do git -C $r log --oneline -5 --pretty=%s; done`.",
+      "to": "> Measured 2026-08-17: one repository writes commits in Portuguese, the other seven in\n> English. Reproduce with `for r in ~/work/*/; do git -C $r log --oneline -5 --pretty=%s; done`."
+    }
+  ]
+}

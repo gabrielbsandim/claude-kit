@@ -8,7 +8,7 @@
 # Only rules that are wrong *for this repository* are turned off, and each says why.
 tools = ["claude-code"]
 severity = "Warning"
-exclude = ["node_modules/**", ".git/**", "tests/__pycache__/**", "hooks/__pycache__/**"]
+exclude = ["node_modules/**", ".git/**", "tests/__pycache__/**", "hooks/__pycache__/**", "dist/**"]
 
 [tool_versions]
 claude_code = "2.1.241"

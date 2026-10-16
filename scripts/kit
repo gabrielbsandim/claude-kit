@@ -13,6 +13,7 @@
 #   kit issues tree <n>        an epic and its children, with state
 #   kit pr-body <file>         how much prose the pull request body adds
 #   kit ledger <file>          the same, on the tighter budget a comment gets
+#   kit export-skill <name>    package a skill to run outside this plugin
 #   kit comments               comment problems in the lines this branch adds
 #   kit ratchet --config F     ESLint violations this branch adds, not inherits
 #   kit context                how full the context is, and whether to compact
@@ -49,6 +50,7 @@ case "$cmd" in
   gate)     exec "$KIT_BIN/gate" "$@" ;;
   issues)   exec "$KIT_BIN/issues" "$@" ;;
   pr-body)  exec "$KIT_BIN/pr-body" "$@" ;;
+  export-skill) exec "$KIT_BIN/export-skill" "$@" ;;
   # The same measurement, on the budget a comment gets. Flags after "$@" would win
   # over the caller's, so these go first.
   ledger)
