@@ -61,6 +61,14 @@ claude plugin install task-funnel@task-funnel
 /task-funnel:setup
 ```
 
+`setup` is the step that moves `kit` off the old copy, which an uninstall leaves on
+disk. Hook shims copied into `~/.claude/hooks/` look the plugin up by name, so copy
+them again:
+
+```sh
+cp ~/.claude/plugins/cache/task-funnel/task-funnel/*/hooks/{kit-hook,plugin-freshness,context-nudge}.sh ~/.claude/hooks/
+```
+
 The repository URL, `kit`, the `CLAUDE_KIT_*` variables and `.claude/funnel.config.json`
 are unchanged.
 
