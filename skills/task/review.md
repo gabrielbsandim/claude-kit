@@ -26,7 +26,7 @@ Run the browser half when **all three** hold, and skip it silently otherwise:
 2. the effort level is in `browser.efforts`,
 3. `kit screens` returned at least one route under `visit`.
 
-Then **one** dispatch to `claude-kit:funnel-screen-lens`, answering two numbered
+Then **one** dispatch to `task-funnel:funnel-screen-lens`, answering two numbered
 parts from one visit per route: part 1 is whether it works, part 2 is whether it
 can be used. It gets the base URL, the `visit` list verbatim, the viewports, the
 spec's acceptance criteria, and `browser.uxDocs`, which is what anchors part 2 to

@@ -4,7 +4,7 @@ argument-hint: "[epic-number | label]"
 allowed-tools: Bash(*), Read
 ---
 
-Groom the backlog with the `claude-kit:backlog` skill. Scope is `$ARGUMENTS`, or the
+Groom the backlog with the `task-funnel:backlog` skill. Scope is `$ARGUMENTS`, or the
 whole open board when that is empty.
 
 Read-only until the user approves each group. Do not close, edit or adopt anything on

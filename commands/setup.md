@@ -1,10 +1,10 @@
 ---
-description: One-time setup for claude-kit in this environment, then a per-repo config check
+description: One-time setup for task-funnel in this environment, then a per-repo config check
 argument-hint: "[--repo]"
 allowed-tools: Bash(*), Read, Edit, Write
 ---
 
-Set up claude-kit here. Do the steps in order and stop at the first one that
+Set up task-funnel here. Do the steps in order and stop at the first one that
 fails, reporting what failed and the one command that fixes it.
 
 1. Put `kit` on PATH:

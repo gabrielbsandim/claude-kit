@@ -38,7 +38,7 @@ Environment, all optional and all present so the tests need no network:
   KIT_FRESHNESS_UPDATE_CMD   the update command (default: claude plugin update ...)
   KIT_FRESHNESS_INTERVAL     seconds between checks (default 21600, 0 disables)
   KIT_FRESHNESS_BIN_DIR      where `kit` is linked (default ~/.local/bin)
-  KIT_FRESHNESS_PLUGIN       plugin id (default claude-kit@claude-kit)
+  KIT_FRESHNESS_PLUGIN       plugin id (default task-funnel@task-funnel)
   CLAUDE_CONFIG_DIR          where plugins/cache lives (default ~/.claude)
 """
 import json
@@ -50,7 +50,7 @@ import subprocess
 import sys
 import time
 
-PLUGIN = os.environ.get("KIT_FRESHNESS_PLUGIN", "claude-kit@claude-kit")
+PLUGIN = os.environ.get("KIT_FRESHNESS_PLUGIN", "task-funnel@task-funnel")
 NAME = PLUGIN.split("@")[0]
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 
@@ -206,7 +206,7 @@ def main():
     lines = []
     if before and after and key(after) > key(before):
         lines.append(
-            "claude-kit was updated on disk, %s to %s. This session loaded %s, so its "
+            "task-funnel was updated on disk, %s to %s. This session loaded %s, so its "
             "skills, agents and commands are the older copy for as long as it lives: "
             "`claude plugin update` cannot reach a running session. Tell the user, in "
             "one line, that restarting with `claude -c` picks up %s and keeps this "

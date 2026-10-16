@@ -96,7 +96,7 @@ def newest_context_bin():
     go stale, and this hook would inherit that.
     """
     import glob
-    hits = glob.glob(os.path.join(config_dir(), "plugins", "cache", "*", "claude-kit", "*", "scripts", "context"))
+    hits = glob.glob(os.path.join(config_dir(), "plugins", "cache", "*", "task-funnel", "*", "scripts", "context"))
     if hits:
         return sorted(hits)[-1]
     # A clone rather than an install: the hook sits next to scripts/ in that case.

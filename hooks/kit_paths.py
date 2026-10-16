@@ -19,7 +19,7 @@ import json
 import os
 
 MANIFEST = os.path.join(".claude-plugin", "plugin.json")
-PLUGIN_NAME = "claude-kit"
+PLUGIN_NAME = "task-funnel"
 
 
 def _root_of(path: str):

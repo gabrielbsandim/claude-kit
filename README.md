@@ -1,4 +1,4 @@
-# claude-kit
+# task-funnel
 
 **You give Claude Code one task. You get a pull request to review.**
 
@@ -8,7 +8,7 @@ run, reviewed by several independent reviewers whose job is to find what is wron
 with it, and a draft pull request with your board card moved.
 
 ```
-/claude-kit:task 575
+/task-funnel:task 575
 ```
 
 What that does, in order:
@@ -38,8 +38,8 @@ before the pull request existed. 838 test files and 11,419 tests green. One hour
 
 ```sh
 claude plugin marketplace add gabrielbsandim/claude-kit
-claude plugin install claude-kit@claude-kit
-/claude-kit:setup
+claude plugin install task-funnel@task-funnel
+/task-funnel:setup
 ```
 
 `owner/repo` shorthand, or a full `https://.../repo.git` clone URL for a non-GitHub
@@ -47,15 +47,43 @@ host. `github.com/owner/repo` is rejected, being neither. `setup` runs once per
 machine: it puts `kit` on your PATH, checks `git`, `jq` and `gh`, and offers to
 write a starting config for the current repo.
 
+### Upgrading from claude-kit
+
+Until 0.16.0 this plugin was called `claude-kit`, a name Claude Code now reserves
+because it reads as one of Anthropic's own. An update cannot cross a rename, so
+reinstall once:
+
+```sh
+claude plugin uninstall claude-kit@claude-kit
+claude plugin marketplace remove claude-kit
+claude plugin marketplace add gabrielbsandim/claude-kit
+claude plugin install task-funnel@task-funnel
+/task-funnel:setup
+```
+
+The repository URL, `kit`, the `CLAUDE_KIT_*` variables and `.claude/funnel.config.json`
+are unchanged.
+
+### Without the plugin
+
+`investigate` and `note` also ship as standalone SKILL.md folders for any agent that
+reads the open skill format, with no `kit` and no plugin behind them. Each release
+attaches them:
+
+- [investigate.zip](https://github.com/gabrielbsandim/claude-kit/releases/latest/download/investigate.zip)
+- [note.zip](https://github.com/gabrielbsandim/claude-kit/releases/latest/download/note.zip)
+
+Unzip into your agent's skills folder, `.claude/skills/` for Claude Code.
+
 ## The five entry points
 
 | Command | For |
 | --- | --- |
-| `/claude-kit:task` | one task, description or issue number, to a draft pull request |
-| `/claude-kit:investigate` | a question about the system. Read-only, ends in an answer, never in a change |
-| `/claude-kit:ship` | work already committed on a branch, to a reviewable pull request |
-| `/claude-kit:backlog` | the open board: what is the same work, what is an orphan, what ships together |
-| `/claude-kit:note` | one durable fact into a markdown vault, with provenance |
+| `/task-funnel:task` | one task, description or issue number, to a draft pull request |
+| `/task-funnel:investigate` | a question about the system. Read-only, ends in an answer, never in a change |
+| `/task-funnel:ship` | work already committed on a branch, to a reviewable pull request |
+| `/task-funnel:backlog` | the open board: what is the same work, what is an orphan, what ships together |
+| `/task-funnel:note` | one durable fact into a markdown vault, with provenance |
 
 ## Configure a repo
 
@@ -414,7 +442,7 @@ early is somebody's unpushed work.
 | gate concurrency | 14 cases in CI, and the 423.5s to 268.7s measurement above |
 | worktree teardown | 23 cases in CI. The first `gc --yes` after the verdict was fixed removed 24 of 27 worktrees and took that tree from 35 GB to 4.2 GB, measured with `du -shc` on both sides |
 | `kit version` | 19 cases in CI. Found by a real run: a task executed the 0.1.0 skill while 0.2.0 had been installed for five minutes |
-| `kit issues` and `/claude-kit:backlog` | 17 cases in CI, and the scorer was calibrated against a real 17-issue board: it reproduces the two orphans and refuses to call two issues the same work for sharing a document. The GitHub path is verified; other trackers exit non-zero rather than answer |
+| `kit issues` and `/task-funnel:backlog` | 17 cases in CI, and the scorer was calibrated against a real 17-issue board: it reproduces the two orphans and refuses to call two issues the same work for sharing a document. The GitHub path is verified; other trackers exit non-zero rather than answer |
 | the context nudge | 39 cases in CI, most of them proving silence, and 13 mutations. Writing them found two real defects: the state never came back down, so a session that compacted and refilled was never warned again, and the blanket `except Exception` made a crash indistinguishable from correct silence |
 | `kit context` | 49 cases in CI, and 11 mutations to the bands and the lookup each turn it red. Three survived the first suite: the env-var window, a transcript with no requests, and the rewrite price being a constant |
 | `kit reload` | 21 cases in CI, and 6 mutations to the message each turn it red. Writing them found two bugs in one subcommand: `die` was called and never defined, and `set -euo pipefail` killed the script on the first `ls` when no copy was installed, so its only error exited 2 with no message |

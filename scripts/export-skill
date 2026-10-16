@@ -4,12 +4,12 @@
     kit export-skill <name> [--out DIR] [--zip] [--root DIR]
 
 The plugin's skills stay the source. export/<name>.json lists exact-text
-replacements that strip what only exists inside claude-kit, and every `from`
+replacements that strip what only exists inside task-funnel, and every `from`
 must match, so a skill edited without its manifest fails here instead of
 shipping a stale package.
 
 Exits 2 on a manifest that no longer matches, 3 when the output still names
-something only claude-kit has, 1 on anything else. Prints the package path on 0.
+something only task-funnel has, 1 on anything else. Prints the package path on 0.
 """
 
 import argparse
@@ -28,7 +28,7 @@ KIT_ONLY = [
     (re.compile(r"`kit [a-z]"), "a kit subcommand"),
     (re.compile(r"funnel-(triage|implementer|test-writer|reviewer|screen-lens)"), "a funnel subagent"),
     (re.compile(r"funnel\.config"), "the funnel config"),
-    (re.compile(r"CLAUDE_KIT_"), "a claude-kit environment variable"),
+    (re.compile(r"CLAUDE_KIT_"), "a task-funnel environment variable"),
     (re.compile(r"task funnel"), "the task funnel"),
     (re.compile(r"kb_reindex"), "the author's vault server"),
 ]
@@ -156,7 +156,7 @@ def main():
     hits = kit_only_hits(target)
     if hits:
         shutil.rmtree(target, ignore_errors=True)
-        die(f"{args.name} still depends on claude-kit, add replacements to export/{args.name}.json:\n" + "\n".join(hits), 3)
+        die(f"{args.name} still depends on task-funnel, add replacements to export/{args.name}.json:\n" + "\n".join(hits), 3)
 
     if args.zip:
         archive = shutil.make_archive(target, "zip", out, args.name)

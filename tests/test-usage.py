@@ -213,7 +213,7 @@ with tempfile.TemporaryDirectory() as cfg:
         fh.write(json.dumps({"type": "user", "message": {"content": "Review this diff."}}) + "\n")
         fh.write(row("b1r", "b1m", 90) + "\n")
     with open(os.path.join(subs, "agent-b1.meta.json"), "w") as fh:
-        json.dump({"agentType": "claude-kit:funnel-reviewer"}, fh)
+        json.dump({"agentType": "task-funnel:funnel-reviewer"}, fh)
     stages = run(cfg, "--session", SESSION, "--by-stage")["stages"]
     check("the agent type names the stage when the prompt does not",
           stages.get("4 reviewer", {}).get("output"), 90)

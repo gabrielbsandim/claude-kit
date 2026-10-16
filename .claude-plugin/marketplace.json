@@ -1,6 +1,6 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "claude-kit",
+  "name": "task-funnel",
   "description": "One-repo delivery funnel plus the scripts that keep it honest",
   "owner": {
     "name": "Gabriel Sandim",
@@ -8,7 +8,7 @@
   },
   "plugins": [
     {
-      "name": "claude-kit",
+      "name": "task-funnel",
       "description": "A delivery funnel for one repository task: triage, spec, implement, test, adversarial review, draft pull request. Configured per repo, so the same funnel runs on any stack.",
       "author": {
         "name": "Gabriel Sandim"

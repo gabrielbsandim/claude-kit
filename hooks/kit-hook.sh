@@ -26,7 +26,7 @@
 case "$1" in
   */*|..*) exit 0 ;;  # a hook name, not a path: nothing here composes a path
 esac
-h=$(ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/claude-kit/*/hooks/"$1" 2>/dev/null |
+h=$(ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/task-funnel/*/hooks/"$1" 2>/dev/null |
   sort -V | tail -1)
 [ -n "$h" ] || exit 0
 exec python3 "$h"

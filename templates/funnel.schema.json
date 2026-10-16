@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/gabrielbsandim/claude-kit/main/templates/funnel.schema.json",
-  "title": "claude-kit funnel config",
+  "title": "task-funnel funnel config",
   "description": "Describes one repository to the task funnel: its base branch, its gate commands, which paths are source and which are tests, and which document each review lens reads. `kit config check` validates the same things this schema does, plus the ones a schema cannot see: whether the branch has a remote, whether the paths exist, and whether every name cross-references something real.",
   "type": "object",
   "additionalProperties": false,

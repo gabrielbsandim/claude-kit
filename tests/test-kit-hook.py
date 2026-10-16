@@ -30,7 +30,7 @@ def check(name, got, want):
 
 
 def install(cfg, version, name, body):
-    root = os.path.join(cfg, "plugins", "cache", "claude-kit", "claude-kit", version, "hooks")
+    root = os.path.join(cfg, "plugins", "cache", "task-funnel", "task-funnel", version, "hooks")
     os.makedirs(root, exist_ok=True)
     path = os.path.join(root, name)
     with open(path, "w") as fh:

@@ -44,7 +44,7 @@ def contains(got, want):
     return want in got
 
 
-def plugin_copy(root, version, name="claude-kit"):
+def plugin_copy(root, version, name="task-funnel"):
     """A minimal plugin tree: a manifest and the real scripts/, so kit runs from it."""
     os.makedirs(os.path.join(root, ".claude-plugin"), exist_ok=True)
     with open(os.path.join(root, ".claude-plugin/plugin.json"), "w") as fh:
@@ -82,11 +82,11 @@ def main():
         check("and it says where it looked", out, "no installed copy under", contains)
         check("it still names the running version", out, "0.3.0", contains)
 
-        installed(cfg, "claude-kit", "0.2.0")
-        installed(cfg, "claude-kit", "0.3.0")
+        installed(cfg, "task-funnel", "0.2.0")
+        installed(cfg, "task-funnel", "0.3.0")
         # Lexical sorting would call 0.9.0 newer than 0.10.0.
-        installed(cfg, "claude-kit", "0.9.0")
-        installed(cfg, "claude-kit", "0.10.0")
+        installed(cfg, "task-funnel", "0.9.0")
+        installed(cfg, "task-funnel", "0.10.0")
         # A different plugin's manifest in the same tree must not be read as ours.
         installed(cfg, "some-other-plugin", "9.9.9")
 

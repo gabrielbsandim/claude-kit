@@ -14,7 +14,7 @@
 #
 # Exits 0 with no output when there is nothing installed. A prompt is never the
 # place to fail.
-h=$(ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/claude-kit/*/hooks/context-nudge.py 2>/dev/null |
+h=$(ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/task-funnel/*/hooks/context-nudge.py 2>/dev/null |
   sort -V | tail -1)
 [ -n "$h" ] || exit 0
 exec python3 "$h"

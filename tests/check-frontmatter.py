@@ -90,7 +90,7 @@ if os.path.exists(skill):
               "no model key: the dispatch has nothing to read it from")
         if not declared:
             continue
-        row = re.search(r"^\|.*`claude-kit:%s`\s*\|\s*(\S+)\s*\|" % re.escape(name),
+        row = re.search(r"^\|.*`task-funnel:%s`\s*\|\s*(\S+)\s*\|" % re.escape(name),
                         body, re.M)
         check("SKILL.md lists %s" % name, bool(row),
               "the agent table has no row for it")

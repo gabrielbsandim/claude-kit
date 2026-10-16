@@ -89,7 +89,7 @@ case "$cmd" in
     mine="$(jq -r '.version // empty' "$manifest" 2>/dev/null || true)"
     name="$(jq -r '.name // empty' "$manifest" 2>/dev/null || true)"
     [ -n "$mine" ] || mine=unknown
-    [ -n "$name" ] || name=claude-kit
+    [ -n "$name" ] || name=task-funnel
     cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 
     newest="" newest_root=""
@@ -135,7 +135,7 @@ case "$cmd" in
   # apply", and a session cannot restart itself, so the last step is one line the
   # user runs in their own terminal. Printing it beats pretending.
   reload)
-    id="${CLAUDE_KIT_PLUGIN_ID:-claude-kit@claude-kit}"
+    id="${CLAUDE_KIT_PLUGIN_ID:-task-funnel@task-funnel}"
     name="${id%@*}"
     cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
     target="${1:-$HOME/.local/bin}"

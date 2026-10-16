@@ -196,7 +196,7 @@ def plant(root, name, is_kit):
 
 
 with tempfile.TemporaryDirectory() as tmp:
-    kit = plant(os.path.join(tmp, "kit"), "claude-kit", True)
+    kit = plant(os.path.join(tmp, "kit"), "task-funnel", True)
     other = plant(os.path.join(tmp, "other"), "some-other-plugin", False)
     carries = f"cases = [('git push {NV}', BLOCK)]\n"
 

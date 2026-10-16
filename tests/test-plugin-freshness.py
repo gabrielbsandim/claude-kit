@@ -37,7 +37,7 @@ def contains(got, want):
     return want in got
 
 
-def install(cfg, version, market="claude-kit", name="claude-kit"):
+def install(cfg, version, market="task-funnel", name="task-funnel"):
     """A copy where `claude plugin install` puts one, with a runnable scripts/kit."""
     root = os.path.join(cfg, "plugins", "cache", market, name, version)
     os.makedirs(os.path.join(root, ".claude-plugin"), exist_ok=True)
@@ -90,7 +90,7 @@ def main():
         install(cfg, "0.4.0")
         bin_dir = os.path.join(root, "bin2")
         os.makedirs(bin_dir)
-        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.4.0/scripts/kit"),
+        os.symlink(os.path.join(cfg, "plugins/cache/task-funnel/task-funnel/0.4.0/scripts/kit"),
                    os.path.join(bin_dir, "kit"))
         out, err, rc = run(cfg, bin_dir)
         check("nothing to do is silent", out.strip(), "")
@@ -102,18 +102,18 @@ def main():
         install(cfg, "0.4.0")
         bin_dir = os.path.join(root, "bin3")
         os.makedirs(bin_dir)
-        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.4.0/scripts/kit"),
+        os.symlink(os.path.join(cfg, "plugins/cache/task-funnel/task-funnel/0.4.0/scripts/kit"),
                    os.path.join(bin_dir, "kit"))
         newer = os.path.join(root, "newer.sh")
         with open(newer, "w") as fh:
-            fh.write("#!/bin/sh\nmkdir -p '%s/plugins/cache/claude-kit/claude-kit/0.5.0/.claude-plugin'\n"
-                     "printf '{\"name\":\"claude-kit\",\"version\":\"0.5.0\"}' > "
-                     "'%s/plugins/cache/claude-kit/claude-kit/0.5.0/.claude-plugin/plugin.json'\n"
-                     "mkdir -p '%s/plugins/cache/claude-kit/claude-kit/0.5.0/scripts'\n"
+            fh.write("#!/bin/sh\nmkdir -p '%s/plugins/cache/task-funnel/task-funnel/0.5.0/.claude-plugin'\n"
+                     "printf '{\"name\":\"task-funnel\",\"version\":\"0.5.0\"}' > "
+                     "'%s/plugins/cache/task-funnel/task-funnel/0.5.0/.claude-plugin/plugin.json'\n"
+                     "mkdir -p '%s/plugins/cache/task-funnel/task-funnel/0.5.0/scripts'\n"
                      "printf '#!/bin/sh\\n[ \"$1\" = setup ] || exit 0\\nmkdir -p \"$2\"\\n"
                      "ln -sf \"$0\" \"$2/kit\"\\n' > "
-                     "'%s/plugins/cache/claude-kit/claude-kit/0.5.0/scripts/kit'\n"
-                     "chmod +x '%s/plugins/cache/claude-kit/claude-kit/0.5.0/scripts/kit'\n"
+                     "'%s/plugins/cache/task-funnel/task-funnel/0.5.0/scripts/kit'\n"
+                     "chmod +x '%s/plugins/cache/task-funnel/task-funnel/0.5.0/scripts/kit'\n"
                      % (cfg, cfg, cfg, cfg, cfg))
         os.chmod(newer, 0o755)
         out, err, rc = run(cfg, bin_dir, update_cmd="sh " + newer)
@@ -134,7 +134,7 @@ def main():
         install(cfg, "0.5.0")
         bin_dir = os.path.join(root, "bin4")
         os.makedirs(bin_dir)
-        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.4.0/scripts/kit"),
+        os.symlink(os.path.join(cfg, "plugins/cache/task-funnel/task-funnel/0.4.0/scripts/kit"),
                    os.path.join(bin_dir, "kit"))
         out, err, rc = run(cfg, bin_dir)
         ctx = context(out)
@@ -148,7 +148,7 @@ def main():
         install(cfg, "0.4.0")
         bin_dir = os.path.join(root, "bin5")
         os.makedirs(bin_dir)
-        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.4.0/scripts/kit"),
+        os.symlink(os.path.join(cfg, "plugins/cache/task-funnel/task-funnel/0.4.0/scripts/kit"),
                    os.path.join(bin_dir, "kit"))
         out, err, rc = run(cfg, bin_dir, update_cmd="false")
         check("a failing update exits zero", rc, 0)
@@ -164,7 +164,7 @@ def main():
         install(cfg, "0.10.0")
         bin_dir = os.path.join(root, "bin6")
         os.makedirs(bin_dir)
-        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.9.0/scripts/kit"),
+        os.symlink(os.path.join(cfg, "plugins/cache/task-funnel/task-funnel/0.9.0/scripts/kit"),
                    os.path.join(bin_dir, "kit"))
         out, err, rc = run(cfg, bin_dir)
         check("0.10.0 is newer than 0.9.0", context(out), "now points at 0.10.0", contains)
@@ -174,7 +174,7 @@ def main():
         install(cfg, "0.4.0")
         bin_dir = os.path.join(root, "bin7")
         os.makedirs(bin_dir)
-        os.symlink(os.path.join(cfg, "plugins/cache/claude-kit/claude-kit/0.4.0/scripts/kit"),
+        os.symlink(os.path.join(cfg, "plugins/cache/task-funnel/task-funnel/0.4.0/scripts/kit"),
                    os.path.join(bin_dir, "kit"))
         marker = os.path.join(root, "ran.log")
         counter = os.path.join(root, "count.sh")
@@ -187,24 +187,24 @@ def main():
         ran = len(open(marker).read().split()) if os.path.exists(marker) else 0
         check("three starts inside the window run the update once", ran, 1)
         # And the window expiring lets it run again.
-        os.utime(os.path.join(cfg, "claude-kit", "freshness-checked-at"),
+        os.utime(os.path.join(cfg, "task-funnel", "freshness-checked-at"),
                  (time.time() - 7200, time.time() - 7200))
         run(cfg, bin_dir, update_cmd="sh " + counter, interval="3600")
         check("an expired window runs it again", len(open(marker).read().split()), 2)
 
         # A held lock means another session is already writing the plugin cache.
-        os.utime(os.path.join(cfg, "claude-kit", "freshness-checked-at"),
+        os.utime(os.path.join(cfg, "task-funnel", "freshness-checked-at"),
                  (time.time() - 7200, time.time() - 7200))
-        os.mkdir(os.path.join(cfg, "claude-kit", "freshness.lock"))
+        os.mkdir(os.path.join(cfg, "task-funnel", "freshness.lock"))
         run(cfg, bin_dir, update_cmd="sh " + counter, interval="3600")
         check("a held lock skips the update", len(open(marker).read().split()), 2)
         check("and leaves the other session's lock alone",
-              os.path.isdir(os.path.join(cfg, "claude-kit", "freshness.lock")), True)
+              os.path.isdir(os.path.join(cfg, "task-funnel", "freshness.lock")), True)
 
         # clear and compact do not restart the process, so there is nothing to check.
-        os.utime(os.path.join(cfg, "claude-kit", "freshness-checked-at"),
+        os.utime(os.path.join(cfg, "task-funnel", "freshness-checked-at"),
                  (time.time() - 7200, time.time() - 7200))
-        shutil.rmtree(os.path.join(cfg, "claude-kit", "freshness.lock"))
+        shutil.rmtree(os.path.join(cfg, "task-funnel", "freshness.lock"))
         out, err, rc = run(cfg, bin_dir, update_cmd="sh " + counter,
                            interval="3600", source="compact")
         check("compact does not trigger an update", len(open(marker).read().split()), 2)
@@ -242,9 +242,9 @@ def main():
         run(cfg8, os.path.join(root, "bin8"), update_cmd="",
             extra={"PATH": fake_dir + os.pathsep + os.environ["PATH"]})
         calls = open(log).read() if os.path.exists(log) else ""
-        check("refreshes the marketplace index", calls, "marketplace update claude-kit",
+        check("refreshes the marketplace index", calls, "marketplace update task-funnel",
               contains)
-        check("and then updates the plugin", calls, "plugin update claude-kit@claude-kit",
+        check("and then updates the plugin", calls, "plugin update task-funnel@task-funnel",
               contains)
         # An explicit override owns the whole update path and gets no extra call.
         log2 = os.path.join(fake_dir, "calls2.log")

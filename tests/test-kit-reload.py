@@ -37,7 +37,7 @@ def check(name, cond, detail=""):
         print("FAIL  %s\n        %s" % (name, detail))
 
 
-def installed(cfg, version, name="claude-kit"):
+def installed(cfg, version, name="task-funnel"):
     """A copy where `claude plugin install` puts one, with the real scripts/ in it."""
     root = os.path.join(cfg, "plugins", "cache", name, name, version)
     os.makedirs(os.path.join(root, ".claude-plugin"), exist_ok=True)
@@ -59,7 +59,7 @@ def stub_claude(bindir, cfg, installs=None):
     body = "#!/bin/sh\n"
     if installs:
         body += "mkdir -p '%s/.claude-plugin'\n" % installs
-        body += "printf '{\"name\":\"claude-kit\",\"version\":\"%s\"}' > '%s/.claude-plugin/plugin.json'\n" % (
+        body += "printf '{\"name\":\"task-funnel\",\"version\":\"%s\"}' > '%s/.claude-plugin/plugin.json'\n" % (
             os.path.basename(installs), installs,
         )
         body += "cp -R '%s' '%s/scripts'\n" % (os.path.join(KIT, "scripts"), installs)
@@ -89,7 +89,7 @@ try:
     os.makedirs(target, exist_ok=True)
 
     old = installed(cfg, "0.6.0")
-    new_path = os.path.join(cfg, "plugins", "cache", "claude-kit", "claude-kit", "0.7.0")
+    new_path = os.path.join(cfg, "plugins", "cache", "task-funnel", "task-funnel", "0.7.0")
     claude_dir = stub_claude(os.path.join(root, "stub"), cfg, installs=new_path)
 
     # 1. It links to the newest installed copy, not to the one it was run from,
@@ -158,7 +158,7 @@ try:
     # The sentence, not a word. Asserting "plugins" passed against bash's own
     # `.../plugins/cache/.../kit: line 132: /bin/kit: No such file or directory`,
     # so a mutant that deleted the error entirely still satisfied it.
-    check("7 the error is the one die raises", "no installed copy of claude-kit" in out3, out3)
+    check("7 the error is the one die raises", "no installed copy of task-funnel" in out3, out3)
     check("7 it names the directory it looked in", "/plugins" in out3.split("no installed copy")[-1]
           if "no installed copy" in out3 else False, out3)
 

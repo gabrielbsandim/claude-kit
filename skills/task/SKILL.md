@@ -31,7 +31,7 @@ kit config gates ship          # which gates a stage runs
 kit review standard            # the review dispatch plan, diffs already written
 ```
 
-If `kit` is not on PATH, run `/claude-kit:setup` once. If the repo has no
+If `kit` is not on PATH, run `/task-funnel:setup` once. If the repo has no
 config, `kit config init` writes a starting one and `kit config check`
 validates it. A repo with no config still runs on detected defaults, and a
 wrong default fails loudly at a gate rather than quietly reviewing the wrong
@@ -54,7 +54,7 @@ it is the one you can fix without stopping (`evidence.md` &middot; *Stale kit*).
 - **`unknown subcommand: version`**: the `kit` on PATH is older than 0.3.0, which is
   the STALE KIT case with no way to say so. `kit setup` from the newest installed
   copy fixes it. Find that copy with
-  `ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/claude-kit/*/ | sort -V | tail -1`.
+  `ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/task-funnel/*/ | sort -V | tail -1`.
 - Anything else: carry on without mentioning it.
 
 ## Rules that hold for the whole funnel
@@ -252,11 +252,11 @@ the standing instructions in these files are lost:
 
 | Stage | Agent | Model | Carries |
 | --- | --- | --- | --- |
-| 1 | `claude-kit:funnel-triage` | inherit | the return shape, the verdicts, the invariant table, the sizing rule |
-| 2 | `claude-kit:funnel-implementer` | inherit | the prohibitions, the bug-reproduction-first rule, what to do with a red gate |
-| 3 | `claude-kit:funnel-test-writer` | sonnet | what to test in what order, and the two failure modes that are the writer's own |
-| 4 | `claude-kit:funnel-reviewer` | sonnet | the reading discipline, the grading rubric, CONFIRMED against PLAUSIBLE |
-| 4 | `claude-kit:funnel-screen-lens` | inherit | report only what you observed, the three-source standard, and NOT PROVEN is not a pass |
+| 1 | `task-funnel:funnel-triage` | inherit | the return shape, the verdicts, the invariant table, the sizing rule |
+| 2 | `task-funnel:funnel-implementer` | inherit | the prohibitions, the bug-reproduction-first rule, what to do with a red gate |
+| 3 | `task-funnel:funnel-test-writer` | sonnet | what to test in what order, and the two failure modes that are the writer's own |
+| 4 | `task-funnel:funnel-reviewer` | sonnet | the reading discipline, the grading rubric, CONFIRMED against PLAUSIBLE |
+| 4 | `task-funnel:funnel-screen-lens` | inherit | report only what you observed, the three-source standard, and NOT PROVEN is not a pass |
 
 The Model column is the frontmatter, printed so a dispatch never guesses it and
 never states it (`evidence.md` &middot; *The model of a dispatch*).
