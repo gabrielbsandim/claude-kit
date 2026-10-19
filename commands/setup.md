@@ -1,7 +1,7 @@
 ---
 description: One-time setup for task-funnel in this environment, then a per-repo config check
 argument-hint: "[--repo]"
-allowed-tools: Bash(*/scripts/kit setup), Bash(kit doctor), Bash(kit config init), Bash(kit config check), Bash(kit board --discover), Read
+allowed-tools: Bash(kit doctor), Bash(kit config init), Bash(kit config check), Bash(kit board --discover), Read
 ---
 
 Set up task-funnel here. Do the steps in order and stop at the first one that
