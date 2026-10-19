@@ -3,6 +3,7 @@
 
     kit usage [--session ID] [--project DIR] [--all] [--json]
               [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--by-stage] [--by-session]
+              [--by-branch]
 
 `ccusage` answers what a day cost and which model spent it. What it does not
 answer, and what decides whether a stage is worth its model, is the split between
@@ -31,6 +32,12 @@ over `CLAUDE_CODE_SESSION_ID`. Until 0.15.0 the variable won, so the same comman
 inside a session answered for that one session whatever directory it was given.
 `--by-session` prints one row per session with its branch, which is the cost per task
 wherever a task is one session, as it is in the lite lane.
+
+A pull request is rarely one session. Measured 2026-10-19 over the week before, one
+branch ran in 12 sessions, so `--by-branch` sums them into one row per branch, which
+is the cost per pull request. Every row and lane also carries `cache%`, the share of
+input tokens read from cache, because a prefix written and never read again is where
+a session pays without noticing.
 
 The rates and the request de-duplication come from `scripts/context`, imported rather
 than copied, because a second copy of a rule is the defect this plugin shipped in
@@ -84,6 +91,8 @@ def add(out, usage):
 
 def finish(out):
     out["tokens"] = out["input"] + out["output"] + out["cache_write"] + out["cache_read"]
+    prompt = out["input"] + out["cache_write"] + out["cache_read"]
+    out["cache_read_pct"] = round(100.0 * out["cache_read"] / prompt, 1) if prompt else 0.0
     return out
 
 
@@ -236,6 +245,18 @@ def by_session(main_files, since=None, until=None):
     return sorted(rows, key=lambda r: r["day"])
 
 
+def by_branch(sessions):
+    """The sessions summed per branch, most expensive first."""
+    out = {}
+    for session in sessions:
+        row = out.setdefault(session["branch"] or "-", dict(blank(), sessions=0, agents=0))
+        for key in ("input", "output", "cache_write", "cache_read", "requests", "cost", "agents"):
+            row[key] += session[key]
+        row["sessions"] += 1
+    rows = [dict(finish(row), branch=name) for name, row in out.items()]
+    return sorted(rows, key=lambda r: -r["cost"])
+
+
 def load_prices(where):
     """The repo config's `prices`, installed as overrides on the shared rate table.
 
@@ -293,6 +314,7 @@ def main(argv):
     ap.add_argument("--until", metavar="YYYY-MM-DD")
     ap.add_argument("--by-stage", action="store_true")
     ap.add_argument("--by-session", action="store_true")
+    ap.add_argument("--by-branch", action="store_true")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("-h", "--help", action="store_true")
     args = ap.parse_args(argv)
@@ -317,7 +339,10 @@ def main(argv):
     total_tokens = m["tokens"] + s["tokens"]
     share = 100.0 * s["tokens"] / total_tokens if total_tokens else 0.0
     stages = by_stage(sub_files, args.since, args.until) if args.by_stage else None
-    sessions = by_session(main_files, args.since, args.until) if args.by_session else None
+    wants_sessions = args.by_session or args.by_branch
+    session_rows = by_session(main_files, args.since, args.until) if wants_sessions else None
+    sessions = session_rows if args.by_session else None
+    branches = by_branch(session_rows) if args.by_branch else None
     if args.since or args.until:
         scope += ", %s to %s" % (args.since or "the beginning", args.until or "today")
     if overrides:
@@ -331,15 +356,19 @@ def main(argv):
             payload["stages"] = stages
         if sessions is not None:
             payload["sessions"] = sessions
+        if branches is not None:
+            payload["branches"] = branches
         json.dump(payload, sys.stdout, indent=2)
         print()
         return 0
 
     print("scope: %s" % scope)
-    print("%-11s %13s %12s %10s" % ("lane", "tokens", "requests", "US$"))
-    print("%-11s %13d %12d %10.2f" % ("main", m["tokens"], m["requests"], m["cost"]))
-    print("%-11s %13d %12d %10.2f  (%d transcripts)"
-          % ("subagents", s["tokens"], s["requests"], s["cost"], len(sub_files)))
+    print("%-11s %13s %12s %10s %7s" % ("lane", "tokens", "requests", "US$", "cache%"))
+    print("%-11s %13d %12d %10.2f %7.1f"
+          % ("main", m["tokens"], m["requests"], m["cost"], m["cache_read_pct"]))
+    print("%-11s %13d %12d %10.2f %7.1f  (%d transcripts)"
+          % ("subagents", s["tokens"], s["requests"], s["cost"], s["cache_read_pct"],
+             len(sub_files)))
     print("subagents are %.1f%% of the tokens" % share)
     if stages:
         print("\n%-16s %6s %10s %10s" % ("stage", "runs", "US$", "US$/run"))
@@ -355,6 +384,15 @@ def main(argv):
                 row["cost"], row["branch"] or "-"))
         spent = sum(r["cost"] for r in sessions)
         print("%d session(s), US$ %.2f each on average" % (len(sessions), spent / len(sessions)))
+    if branches:
+        print("\n%8s %6s %8s %10s %7s  %s"
+              % ("sessions", "agents", "Mtok", "US$", "cache%", "branch"))
+        for row in branches:
+            print("%8d %6d %8.1f %10.2f %7.1f  %s" % (
+                row["sessions"], row["agents"], row["tokens"] / 1e6, row["cost"],
+                row["cache_read_pct"], row["branch"]))
+        spent = sum(r["cost"] for r in branches)
+        print("%d branch(es), US$ %.2f each on average" % (len(branches), spent / len(branches)))
     print("\nList price, not what a subscription charges. The split is the number to"
           "\nread: it is what a stage costs before you decide which model it runs.")
     return 0

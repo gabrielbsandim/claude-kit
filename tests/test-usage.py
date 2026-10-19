@@ -180,6 +180,33 @@ with tempfile.TemporaryDirectory() as cfg, tempfile.TemporaryDirectory() as repo
     check("--by-session rows add up to the whole",
           sum(s["output"] for s in got["sessions"]), got["main"]["output"])
 
+# A pull request spans sessions, so its cost is the sum over its branch.
+with tempfile.TemporaryDirectory() as cfg, tempfile.TemporaryDirectory() as repo:
+    project = os.path.join(cfg, "projects", "-" + repo.strip("/").replace("/", "-"))
+    os.makedirs(project)
+    for name, out_tokens, read, branch in (("aaaa0000", 100, 900, "fix/a-1"),
+                                           ("bbbb0000", 300, 0, "fix/a-1"),
+                                           ("cccc0000", 50, 0, "feat/b-2")):
+        with open(os.path.join(project, name + ".jsonl"), "w") as fh:
+            fh.write(json.dumps({"type": "user", "gitBranch": branch}) + "\n")
+            fh.write(row(name + "r", name + "m", out_tokens, read=read) + "\n")
+    with open(os.path.join(project, "bbbb0000.jsonl"), "a") as fh:
+        fh.write(json.dumps({"type": "assistant", "requestId": "w1",
+                             "timestamp": "2026-08-18T12:00:00.000Z",
+                             "message": {"id": "w1m", "model": "claude-opus-5", "usage": {
+                                 "input_tokens": 50, "output_tokens": 0,
+                                 "cache_creation_input_tokens": 50,
+                                 "cache_read_input_tokens": 0}}}) + "\n")
+    got = run(cfg, "--project", repo, "--by-branch")
+    branches = {b["branch"]: b for b in got["branches"]}
+    check("--by-branch sums the sessions of one branch", branches["fix/a-1"]["output"], 400)
+    check("and counts them", branches["fix/a-1"]["sessions"], 2)
+    check("the most expensive branch comes first", got["branches"][0]["branch"], "fix/a-1")
+    check("cache% is the share of input read from cache",
+          branches["fix/a-1"]["cache_read_pct"], 90.0)
+    check("a lane carries cache% too", got["main"]["cache_read_pct"], 90.0)
+    check("--by-branch alone prints no session rows", "sessions" in got, False)
+
 # One family spans list prices three times apart, so the version decides the rate.
 for model, rate in (("claude-sonnet-4-6", 15), ("us.anthropic.claude-sonnet-4-6", 15),
                     ("claude-opus-4-1-20250805", 75), ("claude-opus-4-5-20251101", 25),
