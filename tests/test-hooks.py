@@ -219,7 +219,7 @@ with tempfile.TemporaryDirectory() as tmp:
         fh.write("## What\n\n" + ("Uma frase inteira que conta algo sobre a mudanca. " * 60) + "\n")
     mid = "Uma frase inteira que conta algo. " * 40
     small = "Uma frase inteira que conta algo. " * 14
-    short = "PR #12 is up for review: https://example.com/pr/12"
+    short = "PR #12 is up for review."
     as_json = os.path.join(tmp, "body.json")
     with open(as_json, "w", encoding="utf8") as fh:
         json.dump({"body": open(long_body, encoding="utf8").read()}, fh)

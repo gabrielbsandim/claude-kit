@@ -198,7 +198,7 @@ mistake: a wrong verdict there decides whether the other four run at all.
 ## Screens, in a real browser
 
 Every other reviewer reads a diff and reasons about it, which is why a change can
-pass lint, types, the whole suite and a seven-reviewer review and still ship a form
+clear lint, types, the whole suite and a seven-reviewer review and still ship a form
 whose submit button is off screen on a phone.
 
 So when a change touches a screen, one more reviewer opens it. `funnel-screen-lens`
@@ -269,7 +269,7 @@ Three are registered, each protecting a property the funnel depends on:
   `grep` or `source`, and that is the path a real leak took. It covers `.env*`
   and, since 0.9.2, `.claude.json` and `.mcp.json`: both hold an `env` block per
   MCP server, which is where a token lands when a server is registered with
-  `--env TOKEN=...`, and a real HubSpot private-app token was found sitting in
+  an `--env` flag, and a real HubSpot private-app token was found sitting in
   plain text in one of them, outside every deny rule. `grep -c`, `grep -l` and
   `wc -l` still pass, because a count reveals no value.
 - **`protect-tests`** refuses the four ways a green suite gets faked: deleting or

@@ -101,7 +101,7 @@ case "$cmd" in
       if [ -z "$newest" ] || [ "$(printf '%s\n%s\n' "$newest" "$v" | sort -V | tail -1)" = "$v" ]; then
         newest="$v"; newest_root="$(dirname "$(dirname "$m")")"
       fi
-    done < <(find "$cfg/plugins" -mindepth 2 -maxdepth 6 -name plugin.json -path '*/.claude-plugin/*' 2>/dev/null || true)
+    done < <(find "$cfg/plugins" -mindepth 2 -maxdepth 6 -name plugin.json -path '*/.claude-plugin/plugin.json' 2>/dev/null || true)
 
     printf '%-10s %-8s %s\n' running "$mine" "$KIT_ROOT"
     if [ -n "$newest" ]; then
