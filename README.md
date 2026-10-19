@@ -47,30 +47,14 @@ host. `github.com/owner/repo` is rejected, being neither. `setup` runs once per
 machine: it puts `kit` on your PATH, checks `git`, `jq` and `gh`, and offers to
 write a starting config for the current repo.
 
-### Upgrading from claude-kit
+**Requirements:** `git`, `jq` and `python3`, on Linux or macOS. `gh` for GitHub
+issues, pull requests and Projects, `az` only for an Azure DevOps board.
 
-Until 0.16.0 this plugin was called `claude-kit`, a name Claude Code now reserves
-because it reads as one of Anthropic's own. An update cannot cross a rename, so
-reinstall once:
+**Claude Code only.** The funnel runs shell scripts, subagents and hooks. claude.ai
+chat ignores agents and hooks and cannot run `kit`, so a skill from this plugin loads
+there but cannot finish.
 
-```sh
-claude plugin uninstall claude-kit@claude-kit
-claude plugin marketplace remove claude-kit
-claude plugin marketplace add gabrielbsandim/claude-kit
-claude plugin install task-funnel@task-funnel
-/task-funnel:setup
-```
-
-`setup` is the step that moves `kit` off the old copy, which an uninstall leaves on
-disk. Hook shims copied into `~/.claude/hooks/` look the plugin up by name, so copy
-them again:
-
-```sh
-cp ~/.claude/plugins/cache/task-funnel/task-funnel/*/hooks/{kit-hook,plugin-freshness,context-nudge}.sh ~/.claude/hooks/
-```
-
-The repository URL, `kit`, the `CLAUDE_KIT_*` variables and `.claude/funnel.config.json`
-are unchanged.
+Upgrading from the old `claude-kit` name: see [Upgrading from claude-kit](#upgrading-from-claude-kit).
 
 ### Without the plugin
 
@@ -82,6 +66,36 @@ attaches them:
 - [note.zip](https://github.com/gabrielbsandim/claude-kit/releases/latest/download/note.zip)
 
 Unzip into your agent's skills folder, `.claude/skills/` for Claude Code.
+
+## What it runs, writes and sends
+
+Nothing is sent to the author or to any third party, and there is no telemetry.
+Everything below happens because a skill or command you ran asked for it, except the
+three registered hooks, which only read the tool call they are shown and never touch
+the network.
+
+- **Runs on your machine:** `git`, `jq` and `python3`; the gate commands your
+  `.claude/funnel.config.json` names, which are yours; `gh` and `az` as above.
+- **Sends, and where:** branches pushed to your repository's remote. Pull requests,
+  comments, issue assignment and board moves go to GitHub through `gh`, with your own
+  `gh` login. For a Jira board, `kit board` calls the `baseUrl` in
+  `.claude/board.json` at `/rest/api/3`, with `JIRA_EMAIL` and `JIRA_API_TOKEN` read
+  from your environment. Those two values go to that URL and nowhere else, and are
+  never written to a file.
+- **Opens in a browser:** when a change touched a screen, the screen lens opens your
+  app's routes through the Playwright MCP server, if you have it installed.
+- **Writes outside the repository:** `kit setup` links `kit` into `~/.local/bin` and
+  prints an `export PATH` line without running it. `/task-funnel:setup` adds that
+  line to your shell profile only after naming the file. Worktrees go next to the
+  repository, `../{repo}-{issue}` by default.
+- **Writes inside the git directory:** gate receipts in `.git/claude-kit/receipts`
+  and review packages in `.git/claude-kit/review`.
+- **Reads outside the repository:** `kit usage` and `kit context` read this
+  machine's Claude Code transcripts under `~/.claude/projects/` to count tokens,
+  locally.
+- **Only if you opt in:** the extra hooks under [Hooks](#hooks) are copied into
+  `~/.claude/hooks/` and registered in your settings by you, never by the plugin.
+  `plugin-freshness` runs `claude plugin update` at most once every 6 hours.
 
 ## The five entry points
 
@@ -462,6 +476,31 @@ early is somebody's unpushed work.
 | `kit comments`, `kit ratchet` | 34 cases in CI against a fake ESLint, and 5 mutations turn them red. The ratchet ran against a real branch with ESLint 8; ESLint 9 with a flat config is written and **never run** |
 | Jira and Azure DevOps adapters | written from the API contract, **never run**, marked so in their own source |
 | `evals/` | schema validated offline, **never run**: `claude plugin eval` is early access and was not enabled on the account this was built from |
+
+## Upgrading from claude-kit
+
+Until 0.16.0 this plugin was called `claude-kit`, a name Claude Code now reserves
+because it reads as one of Anthropic's own. An update cannot cross a rename, so
+reinstall once:
+
+```sh
+claude plugin uninstall claude-kit@claude-kit
+claude plugin marketplace remove claude-kit
+claude plugin marketplace add gabrielbsandim/claude-kit
+claude plugin install task-funnel@task-funnel
+/task-funnel:setup
+```
+
+`setup` is the step that moves `kit` off the old copy, which an uninstall leaves on
+disk. Hook shims copied into `~/.claude/hooks/` look the plugin up by name, so copy
+them again:
+
+```sh
+cp ~/.claude/plugins/cache/task-funnel/task-funnel/*/hooks/{kit-hook,plugin-freshness,context-nudge}.sh ~/.claude/hooks/
+```
+
+The repository URL, `kit`, the `CLAUDE_KIT_*` variables and `.claude/funnel.config.json`
+are unchanged.
 
 ## License
 

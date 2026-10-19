@@ -2,8 +2,8 @@
 # whose frontmatter was not valid YAML on 2026-08-23, which PyYAML then confirmed
 # independently, so it earns a place next to the repo's own tests.
 #
-#   npx agnix .            # what CI would see
-#   npx agnix --strict .   # warnings become errors
+#   npx agnix@0.49.0 .            # what CI would see
+#   npx agnix@0.49.0 --strict .   # warnings become errors
 #
 # Only rules that are wrong *for this repository* are turned off, and each says why.
 tools = ["claude-code"]

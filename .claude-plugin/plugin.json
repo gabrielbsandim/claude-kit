@@ -1,5 +1,6 @@
 {
   "name": "task-funnel",
+  "displayName": "Task Funnel",
   "version": "0.17.0",
   "description": "A delivery funnel for one repository task: triage, spec, implement, test, adversarial review, draft pull request. Every path, gate command and board id comes from a per-repo config file, so the same funnel runs on any stack. Ships the scripts that make worktree teardown, gate receipts and board moves deterministic instead of remembered.",
   "author": {
@@ -7,6 +8,7 @@
     "url": "https://github.com/gabrielbsandim"
   },
   "homepage": "https://github.com/gabrielbsandim/claude-kit",
+  "repository": "https://github.com/gabrielbsandim/claude-kit",
   "license": "MIT",
   "keywords": [
     "workflow",

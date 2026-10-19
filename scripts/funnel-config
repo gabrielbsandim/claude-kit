@@ -70,7 +70,7 @@ defaults_json() {
       worktree: { path: "../{repo}-{issue}", setup: [($pm + " install")], skipSetupWhenDocOnly: true },
       gates: {
         lint:  { cmd: ($pm + " run lint") },
-        types: { cmd: "npx tsc --noEmit" },
+        types: { cmd: "npx --no-install tsc --noEmit" },
         test:  { cmd: ($pm + " test") }
       },
       stages: {

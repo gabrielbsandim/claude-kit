@@ -19,7 +19,7 @@
     "path": "../{repo}-{issue}",
     "setup": [
       "npm ci",
-      "npx prisma generate"
+      "npx --no-install prisma generate"
     ],
     "skipSetupWhenDocOnly": true
   },
@@ -28,13 +28,13 @@
       "cmd": "npm run check"
     },
     "types": {
-      "cmd": "npx tsc --noEmit"
+      "cmd": "npx --no-install tsc --noEmit"
     },
     "test": {
       "cmd": "npm test"
     },
     "test_changed": {
-      "cmd": "npx vitest run --changed {base}"
+      "cmd": "npx --no-install vitest run --changed {base}"
     },
     "coverage": {
       "cmd": "npm run test:coverage",
