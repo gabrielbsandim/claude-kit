@@ -222,7 +222,6 @@ findings and blocks nothing on its own.
   "appDir": "src/app",              // how an entry file becomes a URL
   "routeParams": { "id": "sup-1" }, // a real value per dynamic segment
   "viewports": [{ "name": "mobile", "width": 390, "height": 844 }],
-  "auth": { "userEnv": "APP_E2E_USER", "passEnv": "APP_E2E_PASS" },
   "uxDocs": ["docs/frontend.md"]    // what an interface finding has to cite
 }
 ```
@@ -234,8 +233,9 @@ screen the change did not touch, or something a person cannot do. Grounded in no
 of the three it is an opinion, and the agent is told not to report opinions. That is
 what stops a browser reviewer from proposing a redesign in the middle of a bug fix.
 
-**Credentials are environment variable names, never values.** `kit config check`
-fails on a value there, and the agent has no shell, so it cannot read a secret its
+**Credentials are environment variable names, never values.** An `auth` object
+with `userEnv` and `passEnv` names the variables that hold a test login for the
+local app. `kit config check` fails on a value there, and the agent has no shell, so it cannot read a secret its
 dispatch did not already hold.
 
 **One browser reviewer at a time.** Measured, not assumed: two agents driving this

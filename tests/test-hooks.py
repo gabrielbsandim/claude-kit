@@ -77,7 +77,7 @@ for cmd, want in [
     # But a copy in one clause does not license a read in the next.
     ("cp .env /tmp/x && cat .env", BLOCK),
     ("cp .env /tmp/x; grep KEY .env", BLOCK),
-    ("echo $DATABASE_URL", PASS),
+    ("echo $PORT", PASS),
     ('node -e "console.log(process.env.PORT)"', PASS),
     ("python3 -c 'import os; os.environ[\"X\"]'", PASS),
     # Counting or listing reveals no value, and the settings file is not the config file.

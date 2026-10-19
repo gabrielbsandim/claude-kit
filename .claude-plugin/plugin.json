@@ -10,7 +10,6 @@
   "homepage": "https://github.com/gabrielbsandim/task-funnel",
   "repository": "https://github.com/gabrielbsandim/task-funnel",
   "license": "MIT",
-  "icon": "./.claude-plugin/icon.png",
   "keywords": [
     "workflow",
     "code-review",
