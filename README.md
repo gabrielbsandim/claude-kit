@@ -37,7 +37,7 @@ before the pull request existed. 838 test files and 11,419 tests green. One hour
 ## Install
 
 ```sh
-claude plugin marketplace add gabrielbsandim/claude-kit
+claude plugin marketplace add gabrielbsandim/task-funnel
 claude plugin install task-funnel@task-funnel
 /task-funnel:setup
 ```
@@ -62,8 +62,8 @@ Upgrading from the old `claude-kit` name: see [Upgrading from claude-kit](#upgra
 reads the open skill format, with no `kit` and no plugin behind them. Each release
 attaches them:
 
-- [investigate.zip](https://github.com/gabrielbsandim/claude-kit/releases/latest/download/investigate.zip)
-- [note.zip](https://github.com/gabrielbsandim/claude-kit/releases/latest/download/note.zip)
+- [investigate.zip](https://github.com/gabrielbsandim/task-funnel/releases/latest/download/investigate.zip)
+- [note.zip](https://github.com/gabrielbsandim/task-funnel/releases/latest/download/note.zip)
 
 Unzip into your agent's skills folder, `.claude/skills/` for Claude Code.
 
@@ -437,7 +437,7 @@ python3 tests/test-phase-gate.py       # 18 cases: 5 must block, 13 must not
 python3 tests/test-usage.py            # 41 cases: the lane split, counting a request once, the rate per version, the sum per branch
 python3 tests/test-new-code.py         # 34 cases: what a branch adds, never what it inherited
 claude plugin validate . --strict      # manifests, skills, agents, commands
-npx agnix .                            # the external spec linter, configured by .agnix.toml
+npx agnix@0.49.0 .                     # the external spec linter, configured by .agnix.toml
 ```
 
 CI runs all of those, plus a syntax check per script dispatched on the shebang,
@@ -486,7 +486,7 @@ reinstall once:
 ```sh
 claude plugin uninstall claude-kit@claude-kit
 claude plugin marketplace remove claude-kit
-claude plugin marketplace add gabrielbsandim/claude-kit
+claude plugin marketplace add gabrielbsandim/task-funnel
 claude plugin install task-funnel@task-funnel
 /task-funnel:setup
 ```
@@ -499,8 +499,8 @@ them again:
 cp ~/.claude/plugins/cache/task-funnel/task-funnel/*/hooks/{kit-hook,plugin-freshness,context-nudge}.sh ~/.claude/hooks/
 ```
 
-The repository URL, `kit`, the `CLAUDE_KIT_*` variables and `.claude/funnel.config.json`
-are unchanged.
+The repository moved to `gabrielbsandim/task-funnel`, and GitHub redirects the old
+URL. `kit`, the `CLAUDE_KIT_*` variables and `.claude/funnel.config.json` are unchanged.
 
 ## License
 

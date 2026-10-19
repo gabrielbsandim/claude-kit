@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/gabrielbsandim/claude-kit/main/templates/funnel.schema.json",
+  "$schema": "https://raw.githubusercontent.com/gabrielbsandim/task-funnel/main/templates/funnel.schema.json",
   "base": "develop",
   "docs": {
     "entry": "AGENTS.md",

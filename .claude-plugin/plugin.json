@@ -7,9 +7,10 @@
     "name": "Gabriel Sandim",
     "url": "https://github.com/gabrielbsandim"
   },
-  "homepage": "https://github.com/gabrielbsandim/claude-kit",
-  "repository": "https://github.com/gabrielbsandim/claude-kit",
+  "homepage": "https://github.com/gabrielbsandim/task-funnel",
+  "repository": "https://github.com/gabrielbsandim/task-funnel",
   "license": "MIT",
+  "icon": "./.claude-plugin/icon.png",
   "keywords": [
     "workflow",
     "code-review",

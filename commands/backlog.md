@@ -1,7 +1,7 @@
 ---
 description: "Groom the open backlog: what is the same work, what is an orphan, and what can ship in one pull request"
 argument-hint: "[epic-number | label]"
-allowed-tools: Bash(*), Read
+allowed-tools: Bash(kit issues *), Read
 ---
 
 Groom the backlog with the `task-funnel:backlog` skill. Scope is `$ARGUMENTS`, or the
