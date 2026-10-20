@@ -57,7 +57,7 @@ if not cases:
     fail("nenhum caso em evals/")
 
 for case in cases:
-    if case == "results":
+    if case == "results" or case.startswith("_"):
         continue
     base = os.path.join(ROOT, case)
     prompt = os.path.join(base, "prompt.md")

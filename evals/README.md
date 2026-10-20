@@ -13,6 +13,29 @@ Only `routing-investigate` separates the arms. The other two are too easy: witho
 plugin the model also holds off editing, and also finds `funnel.config.json` with Read,
 so the Bash grader fails both arms alike.
 
+## Outcome cases
+
+Four harder cases (`--tag outcome`) run against a real repository that
+`_fixture/build.sh` builds: a small billing module with a parsing bug, gates that are
+shell scripts under `ci/`, base branch `trunk` and a local remote. The eval sandbox
+mounts `.git` read-only, so they grade what the agent tried (a gate command, a branch,
+a push) and what it answered, not the final git state. Scores from 2026-10-19, US$ 4.65
+in total; the plugin arm of the two cases that differ was run 4 times:
+
+| Case | With plugin | Without |
+|---|---|---|
+| `spec-before-code` | 0.75 (3 of 4 runs perfect) | 0.17 |
+| `short-lane-ships-through-gates` | 0.75 | 0.80 |
+| `investigate-real-bug` | 1.00 | 1.00 |
+| `ship-stops-on-red-gate` | 0.83 | 0.83 |
+
+`spec-before-code` is where the funnel pays: asked to implement an approval rule on
+money, the baseline edits code, and the plugin stops with a spec, once noticing that the
+rule could never fire because `parseBRL` turns "50.000,01" into zero. The other three do
+not separate: the model already finds the bug, reads the gate scripts and refuses the
+push on its own. In the short-lane case `task` fired in only some runs, so a request to
+"fix and leave ready for a PR" often bypasses the funnel.
+
 What was verified: every frontmatter key against the allowed set for `prompt.md`,
 `case.yaml` and each grader type, by `tests/check-eval-schema.py`, which runs in CI.
 An unknown key is an error in the harness, so catching it offline is most of the risk.
