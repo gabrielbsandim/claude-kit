@@ -154,6 +154,8 @@ with tempfile.TemporaryDirectory() as tmp:
         ("push with lease", bash("git push --force-with-lease origin feat/x"), PASS),
         ("ordinary push", bash("git push origin HEAD"), PASS),
         ("ordinary test run", bash("npm test"), PASS),
+        ("-n on a later line", bash("git commit -qam x" + chr(10) + "grep " + "-n foo src"), PASS),
+        ("-f on a later line", bash("git push origin HEAD" + chr(10) + "rm " + "-f out.log"), PASS),
     ]
     for name, payload, want in cases:
         check(f"protect-tests: {name}", run("protect-tests.py", payload), want)

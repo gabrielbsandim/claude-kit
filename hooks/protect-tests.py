@@ -44,10 +44,10 @@ THRESHOLD = re.compile(
 )
 THRESHOLD_FILE = re.compile(r"(vitest|jest|nyc|karma|pytest|codecov|coverage)[.\-]?", re.IGNORECASE)
 
-NO_VERIFY = re.compile(r"\bgit\s+(?:push|commit)\b[^;&|]*\s(?:--no-verify|-n)\b")
+NO_VERIFY = re.compile(r"\bgit\s+(?:push|commit)\b[^;&|\n]*\s(?:--no-verify|-n)\b")
 # `--force-with-lease` starts with `--force`, so the lookahead has to sit right
 # after the word rather than at the end of the command.
-FORCE_PUSH = re.compile(r"\bgit\s+push\b[^;&|]*\s(?:--force(?!-with-lease)|-f)\b")
+FORCE_PUSH = re.compile(r"\bgit\s+push\b[^;&|\n]*\s(?:--force(?!-with-lease)|-f)\b")
 
 
 def block(message: str) -> int:
