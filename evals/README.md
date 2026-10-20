@@ -61,6 +61,15 @@ created. Its `changed-the-string` grader is a `regex` on the trace, so an `Edit`
 `sed` both count: `tool_used` takes one tool, and the e2e run changed the string with
 `sed`.
 
+A second run of every outcome case later that day, US$ 6.53, put
+`risk-lane-small-money-fix` at 0.40 with the plugin. The plugin had not edited
+anything: in both runs the premise check returned NEEDS_DECISION, having found that
+`"1.500"` becomes 1.5 and the obvious one-line fix turns `"12.50"` into 1250, and the
+answer asked the user to decide. The grader demanded a finished spec with an
+`"850,00"` example, so it now passes a stop that names concrete values as the evidence
+behind a decision. Rerun with it, 4 runs per arm, US$ 2.57: 1.00 against 0.00. The
+README's table pools both runs per case, with the risk case from that rerun.
+
 Mean delta +0.32. The risk lane is where the plugin pays: given `Write`, the bare model
 edits `src/money.ts` and `src/medicao.ts` on the spot, and the plugin stops with a spec
 every time. On the direct and copy cases both arms write the code without asking,

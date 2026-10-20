@@ -26,16 +26,16 @@ the extra checks.
 ## Why use it
 
 Same model, same prompts, same repository, with the plugin and without it, measured
-per lane, two runs per task, on 2026-10-20 with `claude plugin eval --ablation with-without`.
+per lane, four runs per task, on 2026-10-20 with `claude plugin eval --ablation with-without`.
 
 | | Claude Code alone | With task-funnel |
 | --- | --- | --- |
-| **Trivial task** (two copy fixes): trivial lane | changes the text, skips your checks, 0.76 | changes it, runs your checks, no agent and no issue on top, 0.92 |
-| cost, time | US$ 0.14, 38 s | US$ 0.27, 50 s |
-| **Simple task** (a new helper): direct lane | right, 1.00 | right, 1.00, and asks nothing extra |
-| cost, time | US$ 0.18, 54 s | US$ 0.30, 64 s |
-| **Risky task** (a fix or a rule on money): risk lane | edits the money code before anyone checked it, 4 of 4 runs, 0.08 | checks first and stops for your approval, 4 of 4 runs, 1.00 |
-| cost, time | US$ 0.18, 42 s | US$ 0.42, 82 s, up to the spec |
+| **Trivial task** (two copy fixes): trivial lane | changes the text, skips your checks, 0.80 | changes it, runs your checks, no agent and no issue on top, 0.90 |
+| cost, time | US$ 0.14, 37 s | US$ 0.27, 45 s |
+| **Simple task** (a new helper): direct lane | right, 1.00 | right and asks nothing extra, 0.95 (one run skipped your checks) |
+| cost, time | US$ 0.18, 49 s | US$ 0.30, 62 s |
+| **Risky task** (a fix or a rule on money): risk lane | edits the money code before anyone checked it, 8 of 8 runs, 0.08 | checks first and stops for your approval, 8 of 8 runs, 1.00 |
+| cost, time | US$ 0.17, 39 s | US$ 0.50, 102 s, up to the spec |
 
 The whole task, issue to pushed branch and draft pull request, run end to end by
 `tests/e2e-lanes.sh` on a small repository: **29 s and US$ 0.35** on the trivial lane,
@@ -60,8 +60,8 @@ defects, all fixed before the pull request existed, with 11,419 tests green.
 ### Cost
 
 You pay for checks where they matter: about US$ 0.13 more than the bare model on a
-trivial or simple task, US$ 0.24 more on a risky one. At 20 tasks a week, 3 of them
-risky, that is roughly US$ 2.90 a week (an estimate from the averages above). What it saves,
+trivial or simple task, US$ 0.33 more on a risky one. At 20 tasks a week, 3 of them
+risky, that is roughly US$ 3.10 a week (an estimate from the averages above). What it saves,
 measured on the repository it was built against:
 
 - **Review rounds are counted and capped.** Before the cap, two pull requests ran 21 and
