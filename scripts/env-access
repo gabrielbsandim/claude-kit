@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""How much this repository trusts the agent with its environment files.
+
+    kit env-access              the level here, and every rule that still applies
+    kit env-access open         the agent may read and edit .env* in this repository
+    kit env-access guarded      the default: .env* never enters a transcript
+
+The level is per repository because the trade is: on a personal project an agent
+that edits `.env` saves real time, and on an employer's repository it must never.
+It is written to the main checkout's `.claude/settings.local.json`, which is untracked,
+so the choice stays on this machine and every worktree of the repository inherits it.
+
+`open` turns off the plugin's `env-guard` for `.env*` here, and nothing else. Two other
+layers can still refuse, and both live in files this command does not own: a `Read()`
+deny rule in any settings file, which Claude Code also turns into a sandbox read deny,
+and a deny rule wins over every allow. So the status lists each rule that still covers
+this repository, with the file it is in, and the user removes them there.
+
+The agent never runs `open` itself: `env-guard` refuses the command. The user runs it
+in a terminal, or in the session with the ! prefix.
+"""
+import json
+import os
+import subprocess
+import sys
+
+LEVELS = ("open", "guarded")
+
+
+def git(*args):
+    out = subprocess.run(["git", *args], capture_output=True, text=True)
+    return out.stdout.strip() if out.returncode == 0 else ""
+
+
+def checkout():
+    top = git("rev-parse", "--show-toplevel")
+    if not top:
+        sys.exit("not inside a git repository")
+    common = git("rev-parse", "--path-format=absolute", "--git-common-dir")
+    return top, os.path.dirname(common) if common else top
+
+
+def load(path):
+    try:
+        with open(path) as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as err:
+        print(f"unreadable  {path}: {err}", file=sys.stderr)
+        return {}
+
+
+def settings_files(main):
+    home = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    return [
+        os.path.join(home, "settings.json"),
+        os.path.join(main, ".claude", "settings.json"),
+        os.path.join(main, ".claude", "settings.local.json"),
+    ]
+
+
+def covers(rule, roots):
+    """Whether a deny rule names an environment file of this repository."""
+    if "(" not in rule or ".env" not in rule:
+        return False
+    target = rule.split("(", 1)[1].rstrip(")")
+    if target.startswith("//"):
+        target = target[1:]
+    if not target.startswith("/"):
+        return True
+    return any(target == r or target.startswith(r + "/") for r in roots)
+
+
+def level(main):
+    value = os.environ.get("KIT_ENV_ACCESS")
+    if value:
+        return value.lower(), "the environment variable KIT_ENV_ACCESS"
+    for path in reversed(settings_files(main)[1:]):
+        value = (load(path).get("env") or {}).get("KIT_ENV_ACCESS")
+        if value:
+            return str(value).lower(), path
+    return "guarded", "the default"
+
+
+def status(top, main):
+    current, source = level(main)
+    print(f"level    {current}, from {source}")
+    roots = sorted({top, main})
+    still = []
+    for path in settings_files(main):
+        data = load(path)
+        rules = (data.get("permissions") or {}).get("deny") or []
+        rules += ((data.get("sandbox") or {}).get("filesystem") or {}).get("denyRead") or []
+        still += [(path, r) for r in rules if covers(r, roots)]
+    if current != "open":
+        print("env-guard  covers .env* here")
+        return 0
+    print("env-guard  off for .env* here; .claude.json and .mcp.json stay covered")
+    if not still:
+        print("deny     no rule in any settings file covers this repository's .env*")
+        return 0
+    print(f"deny     {len(still)} rule(s) still refuse the Read tool and the sandbox here.")
+    print("         A deny wins over every allow, so remove them from the file named:")
+    for path, rule in still:
+        print(f"  {path}  {rule}")
+    return 3
+
+
+def write(main, value):
+    path = os.path.join(main, ".claude", "settings.local.json")
+    data = load(path)
+    data.setdefault("env", {})["KIT_ENV_ACCESS"] = value
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path + ".tmp", "w") as fh:
+            json.dump(data, fh, indent=2)
+            fh.write("\n")
+        os.replace(path + ".tmp", path)
+    except OSError as err:
+        sys.exit(
+            f"cannot write {path}: {err.strerror}.\n"
+            "Claude Code's sandbox protects settings files from the agent, so run this in\n"
+            "your own terminal."
+        )
+    print(f"wrote    KIT_ENV_ACCESS={value} to {path}")
+
+
+def main(argv):
+    top, main_checkout = checkout()
+    if not argv:
+        return status(top, main_checkout)
+    if argv[0] not in LEVELS or len(argv) > 1:
+        sys.exit("usage: kit env-access [open|guarded]")
+    write(main_checkout, argv[0])
+    return status(top, main_checkout)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

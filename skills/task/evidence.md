@@ -436,3 +436,89 @@ kit gate --verify ship >/dev/null 2>&1 && exit 0
 No receipt, a tree that moved since one was written, or no `kit` on the path all
 exit non-zero, and the checks run exactly as before. A push by hand with no funnel
 behind it is that case.
+
+## The funnel, measured over five weeks
+
+Every transcript of the repository this was written against, 2026-09-04 to
+2026-10-19: 31 sessions, about 80 tasks, 1439 subagent transcripts, US$ 6104 spent
+inside the funnel. Per stage, what it cost and what it returned:
+
+| Stage | Cost | What it returned |
+| --- | --- | --- |
+| gates | no model cost | about 30 real defects caught before a commit, out of 70 failures in 483 runs; the other 35 were the runtime out of memory |
+| test-writer | US$ 158, 3% | about 13 real defects, a rounding helper that lost the sign among them |
+| triage | US$ 315, 5% | 15 NEEDS_DECISION on a premise that was really broken; the 65 PROCEED changed little |
+| implementer | US$ 2658, 44% | half of it, US$ 1321, spent on 175 fix rounds |
+| reviewers | US$ 514, 8% | 36 Critical, 334 Important, 1209 Minor |
+| screen lens | US$ 442, 7% | 30 real findings; 14 of 70 runs blocked by the environment |
+| main loop | US$ 1711, 28% | 5.5 compactions per session, against 0.6 without the funnel |
+
+Review and its rounds were about 37% of the total. Three lenses did not pay: one
+Important from `security` in 136 dispatches, 4 from `failure-edges` in 137, and 10
+Important against 72 style Minors from `conventions` in 173. Per US$ 100 spent, the
+ones that did returned CONFIRMED Important findings at: correctness 105, claims 81,
+consequences 60, surfaces 51, tests 51.
+
+What shaped v2 from this: the implementer agent was removed and the main session
+writes the code, since its report was what the session then had to trust; Minor was
+removed, since it was 70% of all findings and fed rounds that ended in deferral; the
+three weak lenses left the template; triage became a premise check paid only on the
+risk lane; and a verifier sits between a finding and a fix.
+
+Not measurable from transcripts: whether the findings that were fixed mattered in
+production. That is what *Measuring escapes* is for.
+
+## Tests before the code
+
+The test-writer used to run after the implementation, from the spec and the changed
+files. It now runs first on the risk lane, and commits failing tests the
+implementation then has to turn green.
+
+The order is from AgentCoder (arXiv 2312.13010): one agent writing both the code and
+its tests reached 71.3% pass@1 against 79.9% with a separate test designer, and the
+tests themselves were accurate 61% of the time against 87.8%. A test written after
+the code tends to assert what the code does; one written from the spec asserts what
+it should do. Two caveats: those are single-function tasks, and the separate designer
+roughly doubles the tokens, which is why the direct lane does not pay for it. On this
+repository the stage was already the cheapest that found real defects, 13 for
+US$ 158.
+
+## Rounds without a counter
+
+The cap on review rounds was a sentence: "cap at `maxRounds`". Two pull requests,
+#1464 and #1465, ran 21 and 25 rounds under a written cap of 2 and cost US$ 842
+between them, 14% of everything the funnel spent in five weeks. Round 20 of #1464
+still returned one Important and twelve Minor, so the rounds were not converging,
+they were being fed: Minor findings without a filter, and a standing instruction
+from the user not to defer anything, which together leave no finding that ends a
+round.
+
+So the count moved into `kit review`. It records each head SHA it reviewed in a file
+per branch beside the review packages. The same head again is the same round, so a
+re-run after a crash costs nothing. A new head past the lane's cap exits 3, and only
+`--reset-rounds` clears the file, which the skill reserves for the user. With Minor
+gone and a verifier in front of every fix, the no-deferral instruction stays
+affordable: what reaches a fix is a reproduced defect in this diff.
+
+## Measuring escapes
+
+A review's findings say what it saw and never what it missed. What it missed shows
+up later as a pull request that fixes the same files, so `kit escapes` counts that:
+a merged pull request followed within 14 days by a merged fix or revert sharing at
+least one source file with it.
+
+Two corrections keep the count honest. A file most pull requests touch shares itself
+with everything, so a file in 20 or more pull requests of the sample does not count
+as shared. Tests, docs, migrations and lockfiles move with every fix by design, so
+they are excluded. Measured on 432 merged pull requests of the repository this was
+written against, 59% had an escape by that definition, which matches an earlier
+cruder estimate of 44 to 58%. None carried a lane marker yet, since the marker is
+new: the number is the baseline the lanes get compared against.
+
+The comparison that says whether the funnel pays is the risk lane's rate against
+`none`, month over month. Each escape is also an eval case waiting to be written:
+`kit escapes --case <n> --out evals` drafts it, and `kit eval-delta` reports what the
+plugin changes against the bare model on that case. On the first recorded runs the
+mean delta was +0.08, and 4 of 7 cases scored the same with and without the plugin,
+which is why the suite is meant to grow from real escapes rather than from cases the
+model already passes alone.

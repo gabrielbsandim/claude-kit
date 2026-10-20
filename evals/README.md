@@ -61,6 +61,39 @@ claude plugin eval . --case 'routing-*'            # no scaffold needed
 claude plugin eval . --json evals/results/run.json --threshold 0.8
 ```
 
+## Reading a run: the delta, not the threshold
+
+`--threshold` reads the arm with the plugin and nothing else, so a case the model
+passes on its own passes the threshold too. What says whether the plugin earns its
+tokens is the score with it minus the score without, beside the cost of each arm:
+
+```sh
+claude plugin eval . --ablation with-without --json evals/results/run.json
+kit eval-delta evals/results/*.json            # one row per case, runs pooled
+kit eval-delta evals/results/*.json --min 0.1  # exit 3 when the mean delta is below 0.1
+```
+
+On the runs above the mean delta is +0.08 and 3 of 7 cases separate the arms by
+0.10 or more.
+
+## Growing the suite from real escapes
+
+A case the bare model already passes measures nothing. The cases worth having are
+the defects that actually shipped, which `kit escapes` finds in a repository's merged
+pull requests: a pull request followed within 14 days by a fix that touched the same
+source files.
+
+```sh
+kit escapes                          # escapes by lane and month
+kit escapes --case 1464 --out evals  # drafts evals/escape-1464/
+```
+
+The draft has two TODOs, and the case is not runnable until both are done: the
+grader has to state the defect as an input and its wrong output, and `scaffold.sh`
+has to build the smallest repository where that defect can happen, from the files
+of the original pull request at its base commit. Then run it with the ablation, and
+keep it only if the arms differ or you expect them to once the funnel changes.
+
 ## What is not covered
 
 - **The review grouping.** The measured claim is that 7 lenses become 4 dispatches

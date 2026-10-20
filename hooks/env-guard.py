@@ -20,8 +20,17 @@ a source file matches the pattern and every script that reads an environment
 variable gets blocked, which is how a guard gets disabled within a day.
 
 Exit 2 blocks and returns stderr to the model as a correction.
+
+How much a repository trusts the agent with its environment is the user's call, not
+this guard's, and it differs per repository: a personal project where the agent
+editing `.env` saves real time, and an employer repository where it must never.
+`KIT_ENV_ACCESS=open` in the repository's `.claude/settings.local.json` `env` block
+(or in the environment) stops this guard covering `.env*` there. Agent config files
+stay covered either way, because they hold the tokens of every MCP server on the
+machine and belong to no single repository. `kit env-access` sets and reports it.
 """
 import json
+import os
 import re
 import sys
 
@@ -81,6 +90,43 @@ def segments(cmd: str) -> list:
     return re.split(r"[|;&\n]+", cmd)
 
 
+def checkouts(cwd: str) -> list:
+    """The checkout holding cwd and, for a linked worktree, the main checkout too:
+    `settings.local.json` is untracked, so a worktree never has its own copy."""
+    path = os.path.abspath(cwd)
+    while True:
+        dotgit = os.path.join(path, ".git")
+        if os.path.isdir(dotgit):
+            return [path]
+        if os.path.isfile(dotgit):
+            try:
+                gitdir = open(dotgit).read().split("gitdir:", 1)[1].strip()
+            except (OSError, IndexError):
+                return [path]
+            common = os.path.normpath(os.path.join(gitdir, "..", ".."))
+            return [path, os.path.dirname(common)]
+        parent = os.path.dirname(path)
+        if parent == path:
+            return []
+        path = parent
+
+
+def access(payload: dict) -> str:
+    value = os.environ.get("KIT_ENV_ACCESS")
+    if value:
+        return value.lower()
+    for root in checkouts(payload.get("cwd") or os.getcwd()):
+        for name in ("settings.local.json", "settings.json"):
+            try:
+                with open(os.path.join(root, ".claude", name)) as fh:
+                    value = (json.load(fh).get("env") or {}).get("KIT_ENV_ACCESS")
+            except (OSError, ValueError, AttributeError):
+                continue
+            if value:
+                return str(value).lower()
+    return "guarded"
+
+
 def check(payload: dict) -> int:
     """The guard itself, over an already-parsed payload.
 
@@ -91,19 +137,27 @@ def check(payload: dict) -> int:
     cmd = (payload.get("tool_input") or {}).get("command") or ""
     if not cmd:
         return 0
-    if not re.search(ENVFILE, cmd):
+    if re.search(r"\benv-access\s+open\b", cmd):
+        sys.stderr.write(
+            "Blocked: opening a repository's environment to the agent is the user's decision,\n"
+            "so the agent never grants it to itself. Ask the user to run it with the ! prefix:\n"
+            "  ! kit env-access open\n"
+        )
+        return 2
+    covered = AGENTCFG if access(payload) == "open" else ENVFILE
+    if not re.search(covered, cmd):
         return 0
     risky = [
         s
         for s in segments(cmd)
-        if re.search(ENVFILE, s)
+        if re.search(covered, s)
         and not (not re.search(SUBSTITUTION, s) and any(re.search(p, s) for p in ALLOW))
     ]
     if not risky:
         return 0
     if any(
-        re.search(READERS + r"[^|;&]*" + ENVFILE, s)
-        or re.search(r"^\s*(source|\.)\s+\S*" + ENVFILE, s)
+        re.search(READERS + r"[^|;&]*" + covered, s)
+        or re.search(r"^\s*(source|\.)\s+\S*" + covered, s)
         for s in risky
     ):
         sys.stderr.write(
@@ -112,7 +166,8 @@ def check(payload: dict) -> int:
             "MCP server. A value read into a transcript stays in that transcript, and rotating\n"
             "it later does not remove it. Read .env.example for the shape, ask the user for the\n"
             "value, or run a script that reads the variable without printing it. To list keys\n"
-            "without values, grep -c, grep -l or wc -l are allowed.\n"
+            "without values, grep -c, grep -l or wc -l are allowed. Whether this repository\n"
+            "trusts the agent with .env is the user's decision (`kit env-access`), not yours.\n"
         )
         return 2
     return 0

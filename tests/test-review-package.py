@@ -62,8 +62,15 @@ def write(root, path, text):
 
 
 def run(root, *args):
-    out = subprocess.run([RP] + list(args), cwd=root, capture_output=True, text=True)
+    """A plan with the round count cleared first: the cases below are about slices,
+    and section 11 is the one about the cap."""
+    extra = ["--reset-rounds"] if "--dispatches" in args else []
+    out = subprocess.run([RP] + list(args) + extra, cwd=root, capture_output=True, text=True)
     return out.stdout + out.stderr
+
+
+def raw(root, *args):
+    return subprocess.run([RP] + list(args), cwd=root, capture_output=True, text=True)
 
 
 def dispatched(text):
@@ -288,6 +295,55 @@ try:
     out = run(tree, "--dispatches", "standard")
     check("10 a local lens document resolves from a worktree",
           os.path.join(root, ".claude", "rubric.md") in out, out)
+
+    # 11. The cap is counted, not remembered. A round is one review of one head, so
+    #     printing the same plan twice is still one round, and the lane decides how
+    #     many heads a branch gets.
+    write(root, ".claude/funnel.config.json",
+          json.dumps({**CFG, "risk": {"paths": ["src/money/*"]}, "reviewGuide": "docs/readme.md",
+                      "effort": {**CFG["effort"], "light": ["correctness"],
+                                 "deep": ["correctness", "tests", "claims"]}}))
+    git(root, "switch", "-q", "-c", "feat/cap")
+    write(root, "src/plain.ts", "export const plain = 1\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "plain")
+    lane = raw(root, "--lane").stdout
+    check("11 a plain diff is the direct lane", lane.startswith("direct"), lane)
+    lane = raw(root, "--lane", "src/money/fee.ts").stdout
+    check("11 a named risky file is the risk lane before any code exists",
+          lane.startswith("risk") and "src/money/fee.ts matches src/money/*" in lane, lane)
+    out = raw(root, "--dispatches", "auto")
+    check("11 auto on a plain diff runs the direct lane, round 1 of 1",
+          "lane   direct, round 1 of 1" in out.stdout and len(dispatched(out.stdout)) == 1, out.stdout + out.stderr)
+    check("11 the review guide is in every dispatch", "docs/readme.md" in out.stdout, out.stdout)
+    again = raw(root, "--dispatches", "auto")
+    check("11 the same head is the same round", again.returncode == 0 and "round 1 of 1" in again.stdout,
+          again.stdout + again.stderr)
+    first_cap = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True,
+                               text=True).stdout.strip()
+    write(root, "src/plain.ts", "export const plain = 2\n")
+    git(root, "commit", "-q", "-am", "fix")
+    out = raw(root, "--dispatches", "auto")
+    check("11 a second head in the direct lane is refused", out.returncode != 0
+          and "allows 1" in out.stderr, out.stdout + out.stderr)
+    out = raw(root, "--dispatches", "risk", "--since", first_cap)
+    check("11 the risk lane allows a second round", out.returncode == 0
+          and "lane   risk, round 2 of 2" in out.stdout, out.stdout + out.stderr)
+    write(root, "src/plain.ts", "export const plain = 3\n")
+    git(root, "commit", "-q", "-am", "fix again")
+    out = raw(root, "--dispatches", "risk", "--since", first_cap)
+    check("11 and refuses a third", out.returncode != 0 and "allows 2" in out.stderr,
+          out.stdout + out.stderr)
+    check("11 naming who can buy another", "--reset-rounds" in out.stderr, out.stderr)
+    out = raw(root, "--dispatches", "risk", "--reset-rounds")
+    check("11 the user's reset starts over", out.returncode == 0 and "round 1 of 2" in out.stdout,
+          out.stdout + out.stderr)
+    write(root, "src/money/fee.ts", "export const fee = 1\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "money")
+    out = raw(root, "--dispatches", "auto", "--reset-rounds")
+    check("11 auto on a risky diff runs the risk lane at its effort",
+          "lane   risk" in out.stdout and "effort deep" in out.stdout, out.stdout + out.stderr)
     out = subprocess.run([CFGTOOL, "check"], cwd=tree, capture_output=True, text=True)
     check("10 a wildcard in a slice is a pattern, not a missing path",
           "**/*.test.ts" not in out.stderr, out.stderr)

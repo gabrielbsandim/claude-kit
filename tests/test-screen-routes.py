@@ -156,8 +156,67 @@ def main():
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
+    preflight_cases()
     print("\n%d passed, %d failed" % (PASS, FAIL))
     return 1 if FAIL else 0
+
+
+def preflight_cases():
+    """The environment a lens needs, checked before one is sent: each of these sent a
+    lens that came back NOT PROVEN for a reason that was never the change."""
+    import socket
+    import time
+    root = tempfile.mkdtemp(prefix="kit-preflight-")
+    other = tempfile.mkdtemp(prefix="kit-other-")
+    server = None
+    try:
+        git(root, "init", "-q")
+
+        def pre(browser):
+            write(root, ".claude/funnel.config.json", json.dumps({"base": "main", "browser": browser}))
+            out = subprocess.run([SCRIPT, "--preflight"], cwd=root, capture_output=True, text=True)
+            return out.returncode, out.stdout
+
+        code, out = pre({"enabled": False})
+        check("preflight: no browser half is not a blocker", (code, out.startswith("skip")), (0, True))
+
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.close()
+        base = {"enabled": True, "baseUrl": "http://127.0.0.1:%d" % port,
+                "start": "node --env-file=.env.lens server.mjs",
+                "auth": {"userEnv": "KIT_T_USER", "passEnv": "KIT_T_PASS"}}
+        code, out = pre(base)
+        check("preflight: a missing env file blocks", (code, "does not exist" in out), (3, True))
+
+        write(root, ".env.lens", "KIT_T_USER=a\nKIT_T_PASS=b\n")
+        code, out = pre(base)
+        check("preflight: env file and credentials present, port free", (code, "ready" in out), (0, True))
+
+        write(root, ".env.lens", "KIT_T_USER=a\n")
+        code, out = pre(base)
+        check("preflight: a credential name missing blocks",
+              (code, "KIT_T_PASS is in neither" in out), (3, True))
+
+        write(root, ".env.lens", "KIT_T_USER=a\nKIT_T_PASS=b\n")
+        server = subprocess.Popen([sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
+                                  cwd=other, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(50):
+            try:
+                socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
+                break
+            except OSError:
+                time.sleep(0.1)
+        code, out = pre(base)
+        check("preflight: a port served from another checkout blocks",
+              (code, "not this checkout" in out), (3, True))
+    finally:
+        if server:
+            server.terminate()
+            server.wait()
+        shutil.rmtree(root, ignore_errors=True)
+        shutil.rmtree(other, ignore_errors=True)
 
 
 if __name__ == "__main__":

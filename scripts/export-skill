@@ -26,7 +26,7 @@ MAX_DESCRIPTION = 1024
 
 KIT_ONLY = [
     (re.compile(r"`kit [a-z]"), "a kit subcommand"),
-    (re.compile(r"funnel-(triage|implementer|test-writer|reviewer|screen-lens)"), "a funnel subagent"),
+    (re.compile(r"funnel-(triage|implementer|test-writer|reviewer|verifier|screen-lens)"), "a funnel subagent"),
     (re.compile(r"funnel\.config"), "the funnel config"),
     (re.compile(r"CLAUDE_KIT_"), "a task-funnel environment variable"),
     (re.compile(r"task funnel"), "the task funnel"),

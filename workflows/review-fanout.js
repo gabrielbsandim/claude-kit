@@ -1,7 +1,7 @@
 export const meta = {
   name: 'review-fanout',
   description:
-    'Runs the funnel review stage as a deterministic fan-out: read the grouped dispatch plan, review each slice as one multi-part contract, then adversarially verify each finding before it can send anyone back to the implementer.',
+    'Runs the funnel review stage as a deterministic fan-out: read the grouped dispatch plan, review each slice as one multi-part contract, then adversarially verify each finding before it can send the change back for a fix.',
   whenToUse:
     'The review stage of a task that is already implemented and committed in a worktree. Not the whole funnel: the rest has gates a human answers, and a workflow cannot ask.',
   phases: [
@@ -57,7 +57,8 @@ const FINDINGS = {
         required: ['lens', 'grade', 'file', 'claim'],
         properties: {
           lens: { type: 'string' },
-          grade: { type: 'string', enum: ['Critical', 'Important', 'Minor'] },
+          grade: { type: 'string', enum: ['Critical', 'Important'] },
+          origin: { type: 'string', enum: ['NEW', 'PRE-EXISTING'] },
           file: { type: 'string' },
           line: { type: 'number' },
           claim: { type: 'string' },
@@ -77,7 +78,7 @@ const VERDICT = {
   },
 }
 
-const level = (args && args.level) || 'standard'
+const level = (args && args.level) || 'auto'
 const since = args && args.since
 const spec = (args && args.spec) || '(no spec text was passed; grade against the diff alone and say so)'
 
@@ -86,6 +87,9 @@ const plan = await agent(
   `Run this and return its content as structured data. Do not review anything.
 
     kit review ${level}${since ? ` --since ${since}` : ''}
+
+If it refuses because the lane's round cap is reached, return an empty dispatches array
+and put the refusal in the first part name.
 
 It prints one block per dispatch: the parts (lens names), the absolute path of a diff
 file that is already written, the documents to read, the changed-line count, and for the
@@ -97,7 +101,7 @@ name.`,
 
 if (!plan || !plan.dispatches?.length) {
   log('no dispatches; is there a committed diff against the base branch in this worktree?')
-  return { confirmed: [], deferred: [], note: 'kit review returned no dispatches' }
+  return { confirmed: [], preExisting: [], note: 'kit review returned no dispatches' }
 }
 
 log(
@@ -121,7 +125,7 @@ The file is already written. Read it once. Its context lines are the changed fil
 Do not run git. Do not open the file again unless a hunk is visibly cut off.
 Do not sweep the codebase; look outside the diff only for a risk you can name, as one
 focused check, naming both the risk and the check.
-Do not run the test suite; the implementer already did.
+Do not run the test suite; the gates already did.
 Do not dispatch subagents.
 
 READ: ${dispatch.docs?.length ? dispatch.docs.join(', ') : 'nothing beyond the diff'}
@@ -138,20 +142,21 @@ GRADE each finding:
   Important the task is not trustworthy until fixed: incorrect or fragile behaviour, a
             missed requirement, a literal duplicated block of logic, a swallowed error,
             a test that asserts nothing
-  Minor     naming, style, "coverage could be broader", a preference
+There is no third grade: naming, style and preferences are not reported at all.
+ORIGIN: NEW if the diff introduced it, PRE-EXISTING if it sits on a line the diff did
+not change.
 
 Every finding carries the input and the wrong output, or the line that cannot do what
-the spec requires. If you cannot state that, it is not a finding yet: say what would
-prove it and grade it Minor.`,
+the spec requires. If you cannot state that, leave it out.`,
       { label: `review:${dispatch.parts[0]}`, phase: 'Review', schema: FINDINGS },
     ),
 
-  // Minor never enters the loop, so it never buys a verifier either.
+  // A pre-existing defect never sends the change back, so it never buys a verifier.
   (result, dispatch) => {
-    const worth = (result?.findings ?? []).filter((f) => f.grade !== 'Minor')
-    const deferred = (result?.findings ?? []).filter((f) => f.grade === 'Minor')
+    const worth = (result?.findings ?? []).filter((f) => f.origin !== 'PRE-EXISTING')
+    const deferred = (result?.findings ?? []).filter((f) => f.origin === 'PRE-EXISTING')
     if (!worth.length) {
-      log(`${dispatch.parts.join('+')}: nothing above Minor`)
+      log(`${dispatch.parts.join('+')}: no new finding`)
       return { verified: [], deferred }
     }
     return parallel(
@@ -183,11 +188,10 @@ const refuted = rows.flatMap((r) => r.verified).filter((f) => f.verdict && f.ver
 const deferred = rows.flatMap((r) => r.deferred ?? [])
 
 log(
-  `${confirmed.length} confirmed, ${refuted.length} refuted by the verifier, ${deferred.length} deferred as Minor`,
+  `${confirmed.length} confirmed, ${refuted.length} refuted by the verifier, ${deferred.length} pre-existing`,
 )
 
-// The deferred list is data on purpose. Minor findings written into a pull request body
-// as prose are how a two-round cap becomes four rounds.
+// Pre-existing defects are data on purpose: each is an issue to open, not a round.
 return {
   confirmed: confirmed.map((f) => ({
     lens: f.lens,
@@ -197,5 +201,5 @@ return {
     why: f.verdict.why,
   })),
   refuted: refuted.map((f) => ({ at: f.file, claim: f.claim, why: f.verdict.why })),
-  deferred: deferred.map((f) => ({ at: f.file, claim: f.claim })),
+  preExisting: deferred.map((f) => ({ at: f.file, claim: f.claim })),
 }

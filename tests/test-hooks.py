@@ -123,6 +123,56 @@ for cmd, want in [
 ]:
     check(f"env-guard: {cmd}", run("env-guard.py", bash(cmd)), want)
 
+# The level is the repository's, read from its untracked settings, and a linked
+# worktree inherits the main checkout's because it has no copy of that file.
+print("\n== env-guard, per-repository access level")
+with tempfile.TemporaryDirectory() as tmp:
+    main_co = os.path.join(tmp, "main")
+    os.makedirs(os.path.join(main_co, ".claude"))
+    subprocess.run(["git", "init", "-q", main_co], check=True)
+    subprocess.run(["git", "-C", main_co, "-c", "user.email=t@t", "-c", "user.name=t",
+                    "commit", "-q", "--allow-empty", "-m", "x"], check=True)
+    linked = os.path.join(tmp, "linked")
+    subprocess.run(["git", "-C", main_co, "worktree", "add", "-q", linked], check=True)
+
+    def at(cwd, cmd):
+        return {**bash(cmd), "cwd": cwd}
+
+    check("env-guard: guarded by default", run("env-guard.py", at(main_co, "cat .env")), BLOCK)
+    with open(os.path.join(main_co, ".claude", "settings.local.json"), "w") as fh:
+        json.dump({"env": {"KIT_ENV_ACCESS": "open"}}, fh)
+    check("env-guard: open repo reads .env", run("env-guard.py", at(main_co, "cat .env")), PASS)
+    check("env-guard: open repo sources .env", run("env-guard.py", at(main_co, "source .env.local")), PASS)
+    check("env-guard: open reaches a subdirectory",
+          run("env-guard.py", at(os.path.join(main_co, ".claude"), "cat ../.env")), PASS)
+    check("env-guard: a linked worktree inherits open", run("env-guard.py", at(linked, "cat .env")), PASS)
+    check("env-guard: open never covers .claude.json",
+          run("env-guard.py", at(main_co, "cat ~/.claude.json")), BLOCK)
+    check("env-guard: the environment variable wins",
+          run("env-guard.py", at(main_co, "cat .env"), {"KIT_ENV_ACCESS": "guarded"}), BLOCK)
+    check("env-guard: another repo stays guarded", run("env-guard.py", at(tmp, "cat .env")), BLOCK)
+    check("env-guard: the agent never opens it", run("env-guard.py", at(main_co, "kit env-access open")), BLOCK)
+    check("env-guard: status is allowed", run("env-guard.py", at(main_co, "kit env-access")), PASS)
+
+    def kit_env(cwd, *args, home):
+        return subprocess.run([os.path.join(ROOT, "scripts", "env-access"), *args], cwd=cwd,
+                              capture_output=True, text=True,
+                              env={**os.environ, "CLAUDE_CONFIG_DIR": home, "KIT_ENV_ACCESS": ""})
+
+    home = os.path.join(tmp, "home")
+    os.makedirs(home)
+    with open(os.path.join(home, "settings.json"), "w") as fh:
+        json.dump({"permissions": {"deny": [f"Read(/{main_co}/.env)", "Read(//elsewhere/.env)",
+                                            "Bash(rm *)"]}}, fh)
+    out = kit_env(linked, "guarded", home=home)
+    check("env-access: guarded writes the main checkout",
+          0 if '"guarded"' in open(os.path.join(main_co, ".claude", "settings.local.json")).read() else 1, 0)
+    out = kit_env(linked, "open", home=home)
+    check("env-access: open lists the deny rule that still covers this repo",
+          0 if out.returncode == 3 and f"/{main_co}/.env" in out.stdout and "elsewhere" not in out.stdout
+          and "rm *" not in out.stdout else 1, 0)
+    check("env-access: status reads the level", 0 if "level    open" in kit_env(main_co, home=home).stdout else 1, 0)
+
 # ------------------------------------------------------------- protect-tests
 print("\n== protect-tests")
 with tempfile.TemporaryDirectory() as tmp:

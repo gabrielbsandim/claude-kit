@@ -3,9 +3,10 @@
 **You give Claude Code one task. You get a pull request to review.**
 
 Not a chat log to read and not a pile of edits in your working tree: a branch, in
-its own worktree, with tests, with your repo's lint and test commands actually
-run, reviewed by several independent reviewers whose job is to find what is wrong
-with it, and a draft pull request with your board card moved.
+its own worktree, with your repo's lint and test commands actually run, reviewed by
+an agent whose job is to find what is wrong with it and checked by another whose job
+is to refute what the first one found, and a draft pull request with your board card
+moved.
 
 ```
 /task-funnel:task 575
@@ -13,20 +14,23 @@ with it, and a draft pull request with your board card moved.
 
 What that does, in order:
 
-1. **Reads the task and decides if it is real.** Ambiguous or too big for one pull
-   request, it says so and stops instead of guessing. It writes a spec with
-   acceptance criteria and shows it to you before spending anything.
-2. **Makes a worktree** so your current work stays untouched, and implements
-   against that spec.
-3. **Runs your gates**, the lint, types and test commands you already have. Not
-   its own idea of a check.
-4. **Writes tests with fresh eyes**, from the spec, by an agent that did not write
-   the code.
-5. **Reviews the diff adversarially**, several reviewers at once, each reading only
-   the slice and documents it needs. If the change touched a screen, one of them
-   opens it in a real browser.
-6. **Opens the draft pull request**, moves the board to in review, and removes the
-   worktree.
+1. **Picks a lane by what the change can break**, not by its size. Money,
+   permission, tenancy, data or a contract another module reads is the risk lane;
+   most work is the direct lane; a typo is trivial. Your config's `risk.paths`
+   outranks the agent's reading.
+2. **Writes the spec.** Inline on the direct lane. On the risk lane an agent first
+   checks that the task's premise is true, and the spec waits for your approval.
+3. **Makes a worktree** so your current work stays untouched. On the risk lane, an
+   agent that will not write the code writes failing tests from the spec first.
+4. **Writes the code in the session and runs your gates**, the lint, types and test
+   commands you already have. A hook refuses to end a turn that changed code and ran
+   no gate.
+5. **Reviews the diff, then verifies the review.** One reviewer on the direct lane,
+   five lenses on the risk lane, plus a real browser if a screen moved. Every
+   finding goes to a verifier told to refute it, and only a reproduced defect gets
+   fixed. Rounds are counted by `kit`: one on direct, two on risk.
+6. **Opens the draft pull request**, findings table and lane marker in the body,
+   moves the board to in review, and removes the worktree.
 
 A real run, the one this paragraph was written from: issue #575, 4 commits, 44
 files, 13 places where an API treated a company-wide permission as if it were
@@ -71,8 +75,8 @@ Unzip into your agent's skills folder, `.claude/skills/` for Claude Code.
 
 Nothing is sent to the author or to any third party, and there is no telemetry.
 Everything below happens because a skill or command you ran asked for it, except the
-three registered hooks, which only read the tool call they are shown and never touch
-the network.
+registered hooks, which only read the tool call or transcript they are shown and
+never touch the network.
 
 - **Runs on your machine:** `git`, `jq` and `python3`; the gate commands your
   `.claude/funnel.config.json` names, which are yours; `gh` and `az` as above.
@@ -88,8 +92,10 @@ the network.
   prints an `export PATH` line without running it. `/task-funnel:setup` adds that
   line to your shell profile only after naming the file. Worktrees go next to the
   repository, `../{repo}-{issue}` by default.
-- **Writes inside the git directory:** gate receipts in `.git/claude-kit/receipts`
-  and review packages in `.git/claude-kit/review`.
+- **Writes inside the git directory:** gate receipts in `.git/claude-kit/receipts`,
+  and review packages and the per-branch round count in `.git/claude-kit/review`.
+- **Writes your settings only when you run it:** `kit env-access open|guarded` writes
+  one `env` key into the repository's `.claude/settings.local.json`.
 - **Reads outside the repository:** `kit usage` and `kit context` read this
   machine's Claude Code transcripts under `~/.claude/projects/` to count tokens,
   locally.
@@ -117,14 +123,19 @@ kit config check     # validates it against this repo
 kit board --discover # prints the board ids to paste into .claude/board.json
 ```
 
-Four keys are worth your attention; the rest have workable defaults.
+Six keys are worth your attention; the rest have workable defaults.
 
 | Key | What it decides |
 | --- | --- |
 | `base` | the branch every diff and every worktree starts from |
-| `gates` | your real commands, and `stages` groups them per funnel stage |
+| `gates` | your real commands, and `stages` groups them per funnel stage. A gate that needs an environment says so in its `cmd` (`NODE_OPTIONS=... npx tsc`), and a guard then refuses the bare tool |
 | `slices` | which paths are source and which are tests, which is what makes a scoped review possible |
 | `lenses` | which document each reviewer reads, which is the largest cost lever here |
+| `risk.paths` | the files whose change puts a task on the risk lane: money, permission, tenancy, schema |
+| `reviewGuide` | one document every reviewer reads first: what review keeps finding in this repository |
+
+`lanes` sets what each lane's review costs, `{"direct": {"effort": "light",
+"maxRounds": 1}, "risk": {"effort": "deep"}}` by default.
 
 `kit config check` is worth running after any edit. It fails on a gate, slice or
 lens that does not exist, a base branch with no remote, a document the config
@@ -138,9 +149,9 @@ little and drops what is ceremony there:
 
 | Kept | Dropped |
 | --- | --- |
-| a short spec, written inline and approved before any code | the triage, implementer and test writer agents |
+| a short spec, written inline and approved before any code | the triage and test writer agents, even on a risky path |
 | `kit gate`, including the two new-code gates below | a second review round: `maxRounds` defaults to 1 |
-| one `funnel-reviewer` dispatch, plus the consequences lens when a `risk.paths` file moved | the findings ledger: `ledger` defaults to false |
+| one `funnel-reviewer` dispatch, plus the consequences lens when a `risk.paths` file moved | any pull request comment from the funnel: `ledger` defaults to false |
 | the ship preflight, the body budget, the board move | the browser lens |
 
 A value the repo names still wins over the profile, and `kit config check` fails a lite
@@ -151,7 +162,7 @@ is paid for in cache reads.
 
 ## What is scripted, and what is left to judgment
 
-Ten things are commands rather than instructions, because prose does not execute:
+These are commands rather than instructions, because prose does not execute:
 
 | Command | What it removes |
 | --- | --- |
@@ -164,36 +175,46 @@ Ten things are commands rather than instructions, because prose does not execute
 | `kit pr-body <file>` | a pull request body that competes with the diff instead of introducing it. It measures the prose you added, not the template, its tables or a fenced block, and refuses over 2000 characters or 600 in one section. The chat report had a budget and the body did not, so the overflow went there: one measured body ran to 11902 characters of prose in front of a 163-line source diff. |
 | `kit comments` | a code comment that narrates, or carries a ticket key, a pull request number, a date or an "N of M" count, all of which are true only on the day they are written. Added lines only, merge base against the working tree, so it gates before the commit and never fails on what the branch inherited. A run is capped at `comments.maxLines` lines of text, 2 by default; a JSDoc's delimiters are free and a `Usage:` block ends the count. |
 | `kit ratchet --config F` | a strict lint rule set that is red on arrival. It runs ESLint with its own config over every changed file twice, at the merge base and now, and fails only on a violation the base did not have, compared by rule and message with the numbers blanked, so moving code is not a new violation and making an already too complex function more complex is. Measured on a real branch: 4 files, 2 new errors, 22 inherited, 1.45s; one base file alone carried 13 `max-depth` violations an absolute gate would have charged to the change. |
-| `kit ledger <file>` | a findings ledger nobody finishes reading. The same measurement on the budget a comment gets, 1000 characters of prose and 350 per section, which is half the body's because the ledger is the second thing read and only by somebody who already decided to. A finding in a table row costs no prose at all, so the budget is reachable rather than merely small. Then the body had a budget and the ledger did not, so the overflow moved again: measured 2026-08-29, the ledgers on pull requests 874, 877 and 880 carried 4515, 4432 and 3734 characters of prose in front of bodies allowed 2000. In a repo with `ledger` false it refuses instead of measuring. |
+| `kit ledger <file>` | a reply comment nobody finishes reading. Findings live in the pull request body as a table since 0.18.0, so this measures what is left: a comment answering a person, at 1000 characters of prose and 350 per section, half the body's budget. Table rows cost nothing. The separate findings comment it used to measure ran to 4515, 4432 and 3734 characters of prose on pull requests 874, 877 and 880, each longer than the body under it. In a repo with `ledger` false it refuses instead of measuring. |
 | `kit gate <stage>` | paying twice for the same check. Receipts are keyed by the working tree's SHA, so the pre-push check skips what the implement gate just proved: measured in obranova on 2026-08-30, that is 359s a push, lint 101s plus types 72s plus suite 186s, and a fix round pushes again. The guard is `kit gate --verify ship >/dev/null 2>&1 && exit 0` at the top of the hook, and it fails open. `gateJobs` runs a stage's independent gates at once; `exclusive` keeps one alone. Since 0.16.0 a gate's `covers` names the gates it is a superset of, so a coverage pass leaves the plain suite's receipt too and a suite never runs twice over one tree. Since 0.11.0 the tree SHA refuses to be wrong quietly: `git add -A` aborts on any path that is not a regular file, a symlink or a git directory, and the sha then silently fell back to HEAD's, so every receipt verified clean against any uncommitted change. Found live, as three character devices an agent sandbox bind-mounts over dotfiles. |
-| `kit review <level>` | one dispatch per reviewer and a blanket document load. `risk.paths` adds the lenses in `risk.lenses` whenever the diff touches a matching file, naming the file and the pattern, because size is the wrong axis for risk. At `maxRounds` 1, `--since` refuses rather than paying for a round the config said does not exist. One dispatch per slice instead, with the diff written to a file so no reviewer runs `git`. Since 0.11.0 a lens may declare `readsOutsideDiff`, which buys back the one thing that discipline denies: it is dispatched alone, with the files the diff touched listed to be read whole rather than as hunks, and the callers of what it exports precomputed by grep and ranked. Measured on two pull requests, all eight findings an outside reviewer returned needed exactly that reading, and no slice lens had reached any of them. |
-| `kit screens` | guessing which URL renders a component the diff changed. It walks the import graph to the router entry point that reaches it. |
+| `kit review` | a review round nobody counted, and one dispatch per reviewer. With no argument it takes the lane from `risk.paths`, naming the file and pattern that matched, and prints `lane, round N of M`. Each reviewed head SHA is recorded per branch, so the same head is the same round and a new head past the lane's cap exits 3; only `--reset-rounds` clears it. Two pull requests once ran 21 and 25 rounds under a cap that was only written down, 14% of five weeks of spend. One dispatch per slice, with the diff written to a file so no reviewer runs `git`, and `reviewGuide` added to every dispatch's reading. A lens may declare `readsOutsideDiff`: it is dispatched alone, with the files the diff touched listed to be read whole and the callers of what it exports precomputed by grep. Measured on two pull requests, all eight findings an outside reviewer returned needed exactly that reading. |
+| `kit lane [file...]` | judging risk by size. `risk` when any file matches `risk.paths`, with the match; `direct` otherwise. With no files it reads the branch's diff. |
+| `kit screens` | guessing which URL renders a component the diff changed. It walks the import graph to the router entry point that reaches it. `--preflight` answers whether the browser half can run before it is dispatched: the env file `browser.start` reads exists and is readable rather than masked by a sandbox, the auth variables are in it, no browser profile is still locked, and the port is free or served from this checkout. Exit 3 names the blocker. |
 | `kit board <status>` | two board writes, behind one port with three adapters. |
 | `kit usage` | guessing what a dispatched stage costs. A subagent's usage is never written into its parent transcript, it lives under `<project>/<session>/subagents/`, so a reader that globs only the parent reports every agent as free. Measured across every transcript on this machine, 2026-08-23: 350 subagent transcripts, 15759 requests, 19.6% of all tokens. Since 0.10.0 `--since`, `--until` and `--by-stage` answer the next question, whether a change to the funnel paid: they cut on each request's own day and print the cost per execution per stage. Measured with them on 2026-08-29, the subagent lane went from 9.9% of all tokens in the thirteen days before the funnel to 50.0% in the thirteen after. Rates are per model, because one Opus rate over a run where two stages are on Sonnet reports those stages at about 2.5 times what they cost. Since 0.15.0 they are per version too, since one family spans list prices three times apart, a repo's `prices` overrides them for a provider that is not on the list, a stage is read from the agent type the harness records beside each transcript before the prompt is guessed at, and `--by-session` prints the cost per session with its branch. `--project` reads every transcript of that directory and wins over `CLAUDE_CODE_SESSION_ID`: until then the variable won, and the same command run inside a session answered for 1 session of a project that had 6. `--by-branch` sums the sessions of each branch, which is the cost per pull request: measured 2026-10-19 over the week before, one branch had run in 12 sessions. Every lane and row carries `cache%`, the share of input read from cache. |
 | `kit review --disjoint a b` | guessing whether two stages can run in parallel. It answers from the file lists. |
 | `kit export-skill <name>` | a skill copied out of the plugin that still calls `kit` or a funnel agent where nothing provides them. It packages one skill as a standalone SKILL.md folder for other agents and marketplaces, applying the exact-text replacements in `export/<name>.json`, and refuses with exit 3 while anything only this plugin has is still named, or with exit 2 when a replacement no longer matches the skill. `investigate` and `note` export today; `task` is refused on purpose. |
+| `kit escapes` | not knowing whether review catches anything. A merged pull request followed within 14 days by a merged fix or revert sharing a source file is an escape, with files most pull requests touch and tests, docs and migrations excluded. Per lane, from the `<!-- funnel: ... -->` marker the body carries, and per month. `--case N --out evals` drafts an eval case from one escape. |
+| `kit eval-delta <run.json>...` | an eval threshold the bare model passes too. It pools runs of `claude plugin eval --ablation with-without` and prints, per case, the score with the plugin, without it, the delta and the cost of each arm. On the first recorded runs, 4 of 7 cases scored the same either way. |
+| `kit env-access [open\|guarded]` | a sandbox and a hook refusing `.env` reads in a repository where you want the agent to manage them. `open` writes `KIT_ENV_ACCESS=open` into this repository's `.claude/settings.local.json`, which worktrees inherit, and env-guard then lets `.env*` through there; `.claude.json` and `.mcp.json` stay guarded. With no argument it prints the level, where it came from, and any `Read(...)` deny rule in your settings that still covers this repository's env files, since a deny wins. The agent cannot run `open` itself: env-guard refuses it, so the choice stays yours, typed as `! kit env-access open`. |
 | the `flaky` list | a red gate in a file the diff never touched becoming a wasted fix round. |
 
 What stays a model decision is the judgment: the triage verdict, whether a scope is
-too big for one pull request, whether a finding is confirmed or merely plausible,
-and "a round whose fix is larger than the original commit is not a round, it is the
-spec having been wrong".
+too big for one pull request, whether a finding reproduces, and "a round whose fix is
+larger than the original commit is not a round, it is the spec having been wrong".
 
 ### Which model each stage runs
 
-Four of the five agents are `model: inherit` and one, `funnel-test-writer`, is
-`model: sonnet`. The criterion is not how hard the stage looks, it is **how its
-mistakes surface**. A test writer's mistake fails `kit gate` in front of you, out
-loud, before anything is pushed. A screen lens's mistake is a green report from a
-session that never left the login page, and a reviewer's mistake is a finding
-nobody raises: both are silent passes, and a silent pass is the failure this whole
-plugin exists to prevent. So a stage is downgraded only when a wrong answer is
-loud, and the ones that judge stay on the session's model.
+| Agent | Model | Lane |
+| --- | --- | --- |
+| `funnel-triage` | inherit | risk |
+| `funnel-test-writer` | sonnet | risk |
+| `funnel-reviewer` | sonnet | direct, risk |
+| `funnel-verifier` | sonnet | direct, risk |
+| `funnel-screen-lens` | inherit | risk, when a screen moved |
 
-Two things that look like candidates and are not. Commit, push and the board move
-are `kit` commands, not model calls, so there is nothing to downgrade there. And
-`funnel-triage` is the cheapest-looking stage that is actually the most expensive
-mistake: a wrong verdict there decides whether the other four run at all.
+The criterion is **how a stage's mistakes surface**. A test writer's mistake fails
+`kit gate` in front of you, out loud. A reviewer's input is a diff file already
+written plus an exact document list, and its findings all pass through a verifier,
+so a Sonnet miss or false alarm is caught one step later. A screen lens's mistake is
+a green report from a session that never left the login page, and a wrong triage
+verdict decides whether the rest runs at all: both are silent, so both stay on the
+session's model.
+
+There is no implementer agent since 0.18.0. The session writes the code: over five
+weeks of real use, half of what the implementer cost went to fix rounds re-reading a
+repository the session already had in context, and the session then had to trust
+its report.
 
 ## Screens, in a real browser
 
@@ -210,9 +231,10 @@ answers two things from one visit per route:
   beyond the one it loads in, feedback after an action, keyboard, contrast, and
   consistency with the screens the change did not touch.
 
-Off unless `browser.enabled` is true and `kit screens` found a route. It never
-becomes a gate: a browser is the most nondeterministic thing here, so it produces
-findings and blocks nothing on its own.
+Off unless the task is on the risk lane, `browser.enabled` is true, `kit screens`
+found a route and `kit screens --preflight` printed `ready`. It never becomes a gate:
+a browser is the most nondeterministic thing here, so it produces findings, which go
+through the verifier like any other, and blocks nothing on its own.
 
 ```jsonc
 "browser": {
@@ -262,7 +284,7 @@ request URL exists. Never done: the funnel does not merge.
 
 ## Hooks
 
-Three are registered, each protecting a property the funnel depends on:
+Five are registered, each protecting a property the funnel depends on:
 
 - **`env-guard`** blocks any shell command that would print a secret-bearing file
   into the transcript. A permission rule on file reads does not cover `cat`,
@@ -271,7 +293,11 @@ Three are registered, each protecting a property the funnel depends on:
   MCP server, which is where a token lands when a server is registered with
   an `--env` flag, and a real HubSpot private-app token was found sitting in
   plain text in one of them, outside every deny rule. `grep -c`, `grep -l` and
-  `wc -l` still pass, because a count reveals no value.
+  `wc -l` still pass, because a count reveals no value. Some repositories are ones
+  where you want the agent to read and edit `.env` files: `kit env-access open`, run
+  by you, lets `.env*` through in that repository only, and the agent's own attempt to
+  run it is refused. `.claude.json` and `.mcp.json` stay covered either way, and a
+  sandbox or a `Read()` deny rule in your settings still applies on top.
 - **`protect-tests`** refuses the four ways a green suite gets faked: deleting or
   emptying a test, adding a skip or focus marker, lowering a coverage threshold,
   and `--no-verify`. A gate on a green suite is worth exactly what that suite is
@@ -290,6 +316,15 @@ Three are registered, each protecting a property the funnel depends on:
   reimplementing the measurement, and fails open on everything it cannot judge:
   a body file not written yet, `--fill`, an unparseable command. Raise the
   budget for one repository with `KIT_PR_BODY_MAX`.
+- **`gate-env`** refuses a Bash command that runs a gate's tool without the
+  environment the gate's `cmd` gives it, and names the `kit gate` that has it. A
+  types gate written as `NODE_OPTIONS=--max-old-space-size=6144 npx tsc` stopped
+  running out of memory once it carried that, and the out-of-memory failures that
+  followed were all a bare `npx tsc` run beside it.
+- **`gate-receipt`** is a `Stop` hook that refuses to end a turn that edited a
+  source file in a checkout with a funnel config, on a branch other than its base,
+  with no `kit gate` after the edit. A red gate passes: the turn ran it and can
+  report what failed. `KIT_GATE_RECEIPT=off` disables it for a session.
 
 Three more ship unregistered, because one is house style, one updates software
 without being asked, and one decides when a turn is allowed to end:
@@ -357,9 +392,9 @@ cp hooks/kit-hook.sh hooks/plugin-freshness.sh ~/.claude/hooks/
 `plugin-freshness.sh` keeps its own file because it is named in instructions already
 followed on other machines. Everything after it goes through `kit-hook.sh`.
 
-Do **not** register `env-guard`, `protect-tests` or `pr-body-gate` yourself. The
-plugin registers all three, and a second registration runs them twice per tool call
-and gives the drift above somewhere to hide.
+Do **not** register `env-guard`, `protect-tests`, `pr-body-gate`, `gate-env` or
+`gate-receipt` yourself. The plugin registers all five, and a second registration
+runs them twice per tool call and gives the drift above somewhere to hide.
 
 The manual half is one command, and it prints the one line a session cannot run for
 itself:
@@ -423,8 +458,8 @@ main, so no bot exception is needed.
 ## Tests
 
 ```sh
-python3 tests/test-hooks.py            # 105 cases, half of them "must not block"
-python3 tests/test-screen-routes.py    # 10 cases: route groups, dynamic segments, the import walk
+python3 tests/test-hooks.py            # 120 cases, half of them "must not block"
+python3 tests/test-screen-routes.py    # 15 cases: route groups, dynamic segments, the import walk, the preflight
 python3 tests/test-gate-jobs.py        # 14 cases: that concurrency happens, and that exclusive means alone
 python3 tests/test-gate-covers.py      # 10 cases: a covering pass proves the covered gate, never the reverse
 python3 tests/test-worktree-state.py   # 23 cases: what teardown will and will not delete
@@ -436,6 +471,12 @@ python3 tests/check-frontmatter.py     # every frontmatter block through a stric
 python3 tests/test-phase-gate.py       # 18 cases: 5 must block, 13 must not
 python3 tests/test-usage.py            # 41 cases: the lane split, counting a request once, the rate per version, the sum per branch
 python3 tests/test-new-code.py         # 34 cases: what a branch adds, never what it inherited
+python3 tests/test-review-package.py   # 52 cases: grouping, the lane, and the round cap refusing a new head
+python3 tests/test-fan-out-routing.py  # 51 cases: the lane rules in the skill and the triage agent agree
+python3 tests/test-guards.py           # 57 cases, gate-env among them
+python3 tests/test-gate-receipt.py     # 10 cases: a code edit with no gate after it, and everything it must ignore
+python3 tests/test-escapes.py          # 12 cases: hot files, exclusions, reverts, lanes, the eval skeleton
+python3 tests/test-eval-delta.py       # 5 cases: pooled runs, the delta, the floor
 claude plugin validate . --strict      # manifests, skills, agents, commands
 npx agnix@0.49.0 .                     # the external spec linter, configured by .agnix.toml
 ```
@@ -468,7 +509,7 @@ early is somebody's unpushed work.
 | the context nudge | 39 cases in CI, most of them proving silence, and 13 mutations. Writing them found two real defects: the state never came back down, so a session that compacted and refilled was never warned again, and the blanket `except Exception` made a crash indistinguishable from correct silence |
 | `kit context` | 49 cases in CI, and 11 mutations to the bands and the lookup each turn it red. Three survived the first suite: the env-var window, a transcript with no requests, and the rewrite price being a constant |
 | `kit reload` | 21 cases in CI, and 6 mutations to the message each turn it red. Writing them found two bugs in one subcommand: `die` was called and never defined, and `set -euo pipefail` killed the script on the first `ls` when no copy was installed, so its only error exited 2 with no message |
-| the two lanes | 45 cases in CI, and 19 mutations to the rules each turn it red. Two of them survived the first version of the suite: a verdict removed from the agent's return shape, and the short lane silently dropping the board move |
+| the three lanes | 51 cases in CI pin the lane table, the rails every lane keeps, the triage verdict that lowers a lane and the counted cap. **Not yet run end to end as a task** on 0.18.0, so the verifier's refutation rate and the escape rate per lane are still to be measured with `kit escapes` |
 | `kit pr-body` | 34 cases in CI, and 8 mutations to the guards each turn it red. Calibrated on three real bodies: 3123, 9999 and 11902 characters of prose against a 2000 budget |
 | `kit export-skill` | 27 cases in CI, and 7 mutations to the guards each turn it red. The exported `investigate` and `note` pass `agnix` with no tool filter |
 | the browser lens | plumbing proven: server started, polled, navigated, resized, and the layout probe named the overflowing element and the below-fold button. **Never run against a real authenticated app**, so the auth path and the dispatch prompt are unproven |

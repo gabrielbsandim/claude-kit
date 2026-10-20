@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+"""What the plugin changed, per eval case: the score with it minus the score without.
+
+    kit eval-delta <run.json>...          one row per case, runs of the same case pooled
+    kit eval-delta <run.json>... --min D  exit 3 when the mean delta is below D
+
+`claude plugin eval --threshold` reads the arm with the plugin and nothing else, so a
+case the model passes on its own passes the threshold too, and a suite of those reads
+as a plugin that works. Measured on this plugin's first recorded runs: 4 of 7 cases
+scored exactly the same with and without it. The number that says whether the
+plugin earns its tokens is the delta beside the cost of each arm, which is this table.
+Run the suite with `--ablation with-without`, or there is no second arm to read.
+"""
+import json
+import sys
+from collections import defaultdict
+
+
+def runs(arm):
+    return [r for r in arm or [] if r.get("error") is None]
+
+
+def main(argv):
+    floor = float(argv[argv.index("--min") + 1]) if "--min" in argv else None
+    paths = [a for i, a in enumerate(argv) if not a.startswith("--") and (i == 0 or argv[i - 1] != "--min")]
+    if not paths:
+        sys.exit("usage: kit eval-delta <run.json>... [--min D]")
+    pooled = defaultdict(lambda: {"with": [], "without": []})
+    for path in paths:
+        with open(path) as fh:
+            data = json.load(fh)
+        for case in data.get("cases") or []:
+            for side in ("with", "without"):
+                pooled[case["name"]][side] += runs((case.get("arms") or {}).get(side))
+    if not any(c["without"] for c in pooled.values()):
+        sys.exit("no run has a without arm: run the suite with --ablation with-without")
+
+    def mean(xs, key):
+        values = [x.get(key) or 0 for x in xs]
+        return sum(values) / len(values) if values else None
+
+    print(f"{'case':<34} {'with':>5} {'w/o':>5} {'delta':>6} {'US$ with':>9} {'US$ w/o':>8}  runs")
+    deltas = []
+    for name in sorted(pooled):
+        arms = pooled[name]
+        w, wo = mean(arms["with"], "score"), mean(arms["without"], "score")
+        if w is None or wo is None:
+            print(f"{name:<34} {'':>5} {'':>5} {'n/a':>6}  one arm has no completed run")
+            continue
+        deltas.append(w - wo)
+        print(f"{name:<34} {w:>5.2f} {wo:>5.2f} {w - wo:>+6.2f} {mean(arms['with'], 'costUsd'):>9.2f} "
+              f"{mean(arms['without'], 'costUsd'):>8.2f}  {len(arms['with'])}/{len(arms['without'])}")
+    if not deltas:
+        return 1
+    avg = sum(deltas) / len(deltas)
+    separating = sum(1 for d in deltas if abs(d) >= 0.1)
+    print(f"\nmean delta {avg:+.2f}; {separating} of {len(deltas)} case(s) separate the arms by 0.10 or more")
+    if floor is not None and avg < floor:
+        return 3
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

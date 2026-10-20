@@ -145,11 +145,13 @@ HEAD_CHARS = 1500
 
 # The funnel's own agents, by the type the harness writes beside each subagent
 # transcript. Exact where the prompt heuristic above is a guess, so it is read first.
+# The implementer left the plugin in 0.18.0 and stays here for the transcripts it wrote.
 AGENT_STAGES = {
     "funnel-triage": "1 triage",
     "funnel-implementer": "2 implementer",
     "funnel-test-writer": "3 test-writer",
     "funnel-reviewer": "4 reviewer",
+    "funnel-verifier": "4 verifier",
     "funnel-screen-lens": "4 screen-lens",
 }
 

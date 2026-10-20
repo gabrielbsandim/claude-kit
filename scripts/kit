@@ -5,8 +5,10 @@
 #   kit config check           validate this repo's funnel config
 #   kit gate <stage>           run a stage's gates, with receipts
 #   kit worktree gc            remove the provably finished worktrees
-#   kit review <level>         the grouped review dispatch plan
-#   kit screens                routes the changed screens are reachable at
+#   kit lane [file...]         direct or risk, from risk.paths
+#   kit review [direct|risk]   the grouped review dispatch plan, capped per lane
+#   kit screens [--preflight]  routes the changed screens are reachable at, or whether
+#                              a browser lens can run here at all
 #   kit board <status> --issue N
 #   kit issues related <text>  what is already on the board that overlaps this
 #   kit issues orphans         open issues that are neither an epic nor a child
@@ -17,6 +19,9 @@
 #   kit comments               comment problems in the lines this branch adds
 #   kit ratchet --config F     ESLint violations this branch adds, not inherits
 #   kit context                how full the context is, and whether to compact
+#   kit env-access [open|guarded]  whether the agent may read this repo's .env*
+#   kit escapes                merged pull requests a later fix had to correct, by lane
+#   kit eval-delta <run.json>  the eval score with the plugin minus the score without
 #   kit usage                  what the main loop spent, and what the agents spent
 #   kit doctor                 is this machine ready
 #   kit version [expected]     which copy is running, and whether it is the newest
@@ -64,16 +69,23 @@ case "$cmd" in
   comments) exec "$KIT_BIN/new-code" comments "$@" ;;
   ratchet)  exec "$KIT_BIN/new-code" ratchet "$@" ;;
   context)  exec "$KIT_BIN/context" "$@" ;;
+  env-access) exec "$KIT_BIN/env-access" "$@" ;;
+  escapes)  exec "$KIT_BIN/escapes" "$@" ;;
+  eval-delta) exec "$KIT_BIN/eval-delta" "$@" ;;
   usage)    exec "$KIT_BIN/usage" "$@" ;;
   worktree) exec "$KIT_BIN/worktree" "$@" ;;
   board)    exec "$KIT_BIN/board-move" "$@" ;;
   review)
-    # `kit review standard` is the common case; anything starting with - passes through.
+    # Bare `kit review` is the lane's own plan, and so is a fix round. A level or a
+    # lane name picks it explicitly; the other flags reach review-package untouched.
     case "${1:-}" in
-      -*|"") exec "$KIT_BIN/review-package" "$@" ;;
+      "") exec "$KIT_BIN/review-package" --dispatches auto ;;
+      --since|--reset-rounds) exec "$KIT_BIN/review-package" --dispatches auto "$@" ;;
+      -*) exec "$KIT_BIN/review-package" "$@" ;;
       *) exec "$KIT_BIN/review-package" --dispatches "$@" ;;
     esac
     ;;
+  lane)     exec "$KIT_BIN/review-package" --lane "$@" ;;
 
   # Three copies of this plugin can disagree at once, and every one of them fails
   # silently. A running session keeps the copy it loaded at startup, so its skills

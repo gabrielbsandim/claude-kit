@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "task-funnel",
-      "description": "A delivery funnel for one repository task: triage, spec, implement, test, adversarial review, draft pull request. Configured per repo, so the same funnel runs on any stack.",
+      "description": "A delivery funnel for one repository task, in three lanes by what the change can break: spec, tests before the code on risky paths, the repo's own gates, a review whose findings are verified before anything is fixed, draft pull request. Configured per repo, so the same funnel runs on any stack.",
       "author": {
         "name": "Gabriel Sandim"
       },

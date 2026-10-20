@@ -81,11 +81,11 @@ check(
     "a confirmation round crept back in",
 )
 
-# 5. The short lane is a funnel, so every rail the long one runs it runs too. The
-#    two-lane table is where that is stated, and each row is a thing a later edit
-#    can drop without looking like it dropped anything.
-check("5 the two-lane table exists", "### The two lanes, and what they share" in routing,
-      "the section naming what both lanes run is gone")
+# 5. Every lane is a funnel, so every rail the risk lane runs the other two run as
+#    well. The rails table is where that is stated, and each row is a thing a later
+#    edit can drop without looking like it dropped anything.
+check("5 the rails table exists", "### What every lane runs" in routing,
+      "the section naming what every lane runs is gone")
 for rail in (
     "Stage 0 pre-flight",
     "Board to in progress",
@@ -96,17 +96,22 @@ for rail in (
     "Body under the `kit pr-body` budget",
     "`kit board in_review`, `kit worktree gc --yes`",
 ):
-    row = re.search(re.escape("| " + rail + " |") + r"\s*(\w+)\s*\|\s*(\w+)\s*\|", routing)
+    row = re.search(re.escape("| " + rail + " |") + r"\s*(\w+)\s*\|\s*(\w+)\s*\|\s*(\w+)\s*\|", routing)
     check(f"5 the table has a row for {rail!r}", row is not None, "rail missing from the table")
     check(
-        f"5 both lanes run {rail!r}",
-        row is not None and row.group(1) == "yes" and row.group(2) == "yes",
-        f"the row says {row.groups() if row else None}, so the short lane dropped a rail",
+        f"5 every lane runs {rail!r}",
+        row is not None and row.groups() == ("yes", "yes", "yes"),
+        f"the row says {row.groups() if row else None}, so a lane dropped a rail",
     )
-check("5 it is a funnel, not the discipline removed",
-      "not the long one with the discipline removed" in routing, "the framing guard is gone")
-check("5 the short lane creates no issue", "never creates one" in routing,
+check("5 the lanes differ in readers, not rails", "They do not differ in the rails" in routing,
+      "the framing guard is gone")
+check("5 the trivial lane creates no issue", "never creates one" in routing,
       "nothing stops a typo from opening an issue")
+rounds = re.search(r"\| Review rounds, each finding verified \|\s*(\d)\s*\|\s*(\d)\s*\|\s*(\d)\s*\|", routing)
+check("5 rounds per lane are 2, 1, 0", rounds is not None and rounds.groups() == ("2", "1", "0"),
+      f"the rounds row says {rounds.groups() if rounds else None}")
+check("5 the repo's risk paths outrank the table", "`kit lane`" in routing and "risk.paths" in routing,
+      "the lane is back to being judged from the table alone")
 
 # 6. Uncertainty escalates. This is the asymmetry the whole design rests on, so
 #    it is stated in the skill rather than left to judgement.
@@ -124,40 +129,36 @@ check("7 the skill still points at the floor", "The triage floor" in routing,
 
 # 8. Both files know the same verdict name. This is the pair that actually breaks
 #    at runtime: triage returns a token the orchestrator has no branch for, and the
-#    orchestrator falls through to its default, which is the long lane.
-check("8 triage declares SHORT_FUNNEL", "SHORT_FUNNEL" in triage, "the verdict is not in the agent")
+#    orchestrator falls through to its default, which is the risk lane.
+check("8 triage declares DIRECT_LANE", "DIRECT_LANE" in triage, "the verdict is not in the agent")
 verdict_line = next(
     (l for l in TRIAGE_RAW.splitlines() if l.startswith("VERDICT:")), ""
 )
 check("8 the return shape has a VERDICT line", verdict_line != "", "no VERDICT line at all")
 check(
     "8 the verdict is in the return shape",
-    "SHORT_FUNNEL" in verdict_line,
+    "DIRECT_LANE" in verdict_line,
     f"declared in prose but not in the shape the agent returns: {verdict_line!r}",
 )
 # The branch, not merely the token. Grepping the whole skill passed while the
 # orchestrator had no branch at all, because the name still appeared in the list of
 # verdicts the dispatch returns. That mutation survived, so this asserts the arrow.
-check(
-    "8 the orchestrator has a branch for it",
-    re.search(r"`SHORT_FUNNEL` →", skill) is not None,
-    "the name appears but nothing says what to do with it",
-)
+branch_at = skill.find("`DIRECT_LANE` →")
+check("8 the orchestrator has a branch for it", branch_at >= 0,
+      "the name appears but nothing says what to do with it")
 
 # 9. The branch says where the run goes next. A verdict with no destination is a
 #    verdict that gets read and then ignored.
-gate_at = skill.find("**GATE**")
-gate = skill[gate_at:gate_at + 1400] if gate_at >= 0 else ""
-check("9 the gate section exists", gate != "", "no **GATE** in the skill")
-check("9 the branch names its destination", "stage 5" in gate,
+branch = skill[branch_at:branch_at + 500] if branch_at >= 0 else ""
+check("9 the branch names its destination", "run the direct lane" in branch,
       "the branch does not say where the run continues")
-check("9 the branch keeps the two-lane rails", "two-lane table" in gate,
-      "the branch does not tie back to what the short lane still runs")
+check("9 the branch keeps the spec", "on the spec it returned" in branch,
+      "the direct lane would implement against nothing")
 
 # 10. Triage must not return the verdict for smallness either, or the backstop
 #     reintroduces the axis the skill just refused.
-tri_at = triage.find("- `SHORT_FUNNEL`")
-tri_verdict = triage[tri_at:] if tri_at >= 0 else ""
+tri_at = triage.find("- `DIRECT_LANE`")
+tri_verdict = triage[tri_at:tri_at + 600] if tri_at >= 0 else ""
 check("10 the triage verdict is documented", tri_verdict != "", "no prose for the verdict")
 check("10 triage refuses the size axis", "because the diff looks small" in tri_verdict,
       "the agent may return the verdict for smallness")
@@ -166,7 +167,18 @@ check("10 triage still returns the spec", "still return the spec" in tri_verdict
 
 # 11. And it must not re-dispatch to shop for a different answer, which is the
 #     obvious way to spend the floor twice.
-check("11 no second triage", "spent to disagree" in gate, "re-dispatch is not refused")
+check("11 no second triage", "spent to disagree" in branch, "re-dispatch is not refused")
+
+# 12. The round cap is counted by kit, and the skill says why with the number. A cap
+#     that is only written down is the one that ran to 25.
+check("12 the cap is counted", "The cap is counted, not remembered" in skill,
+      "the round cap is back to being prose")
+check("12 the cap points at its measurement", "Rounds without a counter" in skill,
+      "the pointer to the 21 and 25 rounds is gone")
+check("12 the measurement is there", "#1464" in evidence and "US$ 842" in evidence,
+      "the runaway rounds are no longer recorded")
+check("12 only the user resets", "Only the user buys another round" in skill,
+      "nothing reserves --reset-rounds for the user")
 
 print(f"{passes} passed, {len(failures)} failed")
 for line in failures:

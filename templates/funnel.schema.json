@@ -249,12 +249,12 @@
         "lite"
       ],
       "default": "full",
-      "description": "`lite` is for a repo where the per-task cost matters more than the extra readers. No triage, implementer or test writer agent: the spec is written inline and approved, the main session implements, and one reviewer reads the diff once. It defaults maxRounds to 1, ledger to false and the browser lens off; a value the repo names still wins. `kit config check` fails a lite repo whose effort level spreads its lenses over more than one slice, because that is more than one reviewer."
+      "description": "`lite` is for a repo where the per-task cost matters more than the extra readers: every task runs the direct lane, with one reviewer and one round, and a risky path adds `risk.lenses` to that round instead of buying a second. It defaults maxRounds to 1, ledger to false and the browser lens off; a value the repo names still wins. `kit config check` fails a lite repo whose effort level spreads its lenses over more than one slice, because that is more than one reviewer."
     },
     "risk": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Lenses a path buys regardless of effort level. When the diff touches any of `paths`, `kit review` adds `lenses` to the level it was asked for and names the file and pattern that matched.",
+      "description": "The paths that put a change on the risk lane. `kit lane` and `kit review` match the changed files against `paths` and name the file and pattern that matched; `lenses` are added to whatever level the review runs at.",
       "properties": {
         "paths": {
           "type": "array",
@@ -271,6 +271,56 @@
           "description": "Keys of `lenses`."
         }
       }
+    },
+    "lanes": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What each lane's review costs. `direct` is the default lane, `risk` is the one a path in `risk.paths` or the triage agent puts a task on.",
+      "properties": {
+        "direct": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "effort": {
+              "type": "string",
+              "description": "A key of `effort`: the lenses this lane's review runs."
+            },
+            "maxRounds": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Review rounds this lane allows per branch, counted by `kit review` per head SHA. Falls back to the top-level `maxRounds`."
+            }
+          }
+        },
+        "risk": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "effort": {
+              "type": "string",
+              "description": "A key of `effort`: the lenses this lane's review runs."
+            },
+            "maxRounds": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Review rounds this lane allows per branch, counted by `kit review` per head SHA. Falls back to the top-level `maxRounds`."
+            }
+          }
+        }
+      },
+      "default": {
+        "direct": {
+          "effort": "light",
+          "maxRounds": 1
+        },
+        "risk": {
+          "effort": "deep"
+        }
+      }
+    },
+    "reviewGuide": {
+      "type": "string",
+      "description": "A document every review dispatch reads first: what this repository's reviewers keep finding and what it has already decided. `kit config check` fails when the file is missing."
     },
     "prices": {
       "type": "object",
@@ -301,13 +351,13 @@
     "maxRounds": {
       "type": "integer",
       "minimum": 1,
-      "description": "Cap on fix rounds. At the cap every open finding gets a written decision; silent discard is prohibited.",
+      "description": "Fallback cap on review rounds per branch when a lane names none. `kit review` counts it per head SHA and refuses a new head at the cap; only `--reset-rounds` clears the count. At the cap every open finding gets a written decision in the pull request body.",
       "default": 2
     },
     "ledger": {
       "type": "boolean",
       "default": true,
-      "description": "Whether the funnel posts a findings ledger as a pull request comment. False means the body is the only text the funnel writes on the pull request: what does not fit is cut, not moved to a comment, and the pr-body-gate hook refuses a `gh pr comment` from the funnel."
+      "description": "Whether the funnel may post a findings comment on the pull request. Since the findings table moved into the body, false is the recommended value: the body is then the only text the funnel writes, and the pr-body-gate hook refuses a `gh pr comment` from the funnel."
     },
     "prBody": {
       "type": "object",

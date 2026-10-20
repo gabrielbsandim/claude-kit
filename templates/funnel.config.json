@@ -73,24 +73,6 @@
       "slice": "src",
       "docs": []
     },
-    "conventions": {
-      "slice": "src",
-      "docs": [
-        "docs/architecture.md",
-        "docs/conventions.md",
-        "docs/frontend.md"
-      ]
-    },
-    "failure-edges": {
-      "slice": "src",
-      "docs": []
-    },
-    "security": {
-      "slice": "src",
-      "docs": [
-        "docs/security.md"
-      ]
-    },
     "tests": {
       "slice": "tests",
       "docs": [
@@ -124,25 +106,46 @@
     ],
     "standard": [
       "correctness",
-      "conventions",
       "tests",
       "claims"
     ],
     "deep": [
       "correctness",
-      "conventions",
-      "failure-edges",
-      "security",
       "tests",
-      "surfaces",
       "claims",
+      "surfaces",
       "consequences"
     ]
   },
   "reviewModel": {
     "deep": "opus"
   },
+  "lanes": {
+    "direct": {
+      "effort": "light",
+      "maxRounds": 1
+    },
+    "risk": {
+      "effort": "deep",
+      "maxRounds": 2
+    }
+  },
+  "risk": {
+    "paths": [
+      "prisma/*",
+      "*/auth/*",
+      "*/permissions/*",
+      "*/billing/*",
+      "*/payments/*",
+      "src/app/api/*"
+    ],
+    "lenses": [
+      "consequences"
+    ]
+  },
+  "reviewGuide": "docs/review.md",
   "maxRounds": 2,
+  "ledger": false,
   "maxParallelAgents": 3,
   "browser": {
     "enabled": false,

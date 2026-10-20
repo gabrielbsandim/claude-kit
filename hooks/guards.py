@@ -29,7 +29,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Trigger substrings, one per guard. A guard runs only when its trigger appears
 # in the text the guard would read. Keep these as supersets: see the docstring.
-ENV_MARKERS = (".env", ".claude.json", ".mcp.json")
+ENV_MARKERS = (".env", ".claude.json", ".mcp.json", "env-access")
 # Escaped on purpose: this file must not contain the literal it looks for.
 DASH = "\u2014"
 
@@ -65,7 +65,9 @@ def pre_tool_use(payload: dict) -> int:
             code = load("pr-body-gate").check(payload)
             if code:
                 return code
-        return 0
+        # No prefilter: which tool is constrained is in the repository's config, so
+        # the trigger is not a substring this file can know. It reads one small file.
+        return load("gate-env").check(payload)
 
     if tool.endswith("addCommentToJiraIssue"):
         return load("pr-body-gate").check(payload)

@@ -4,6 +4,8 @@
 #   review-package --plan <light|standard|deep> [--since <sha>]
 #   review-package <lens> [--since <sha>]
 #   review-package --disjoint <lensA> <lensB>
+#   review-package --lane [file...]
+#   review-package --dispatches <auto|direct|risk|level> [--since <sha>] [--reset-rounds]
 #
 # Why this exists: two thirds of a typical diff is test code, so an unscoped
 # `git diff base...HEAD` made four of five lenses read ~1900 lines that only one
@@ -36,11 +38,12 @@ doc_path() {
   fi
 }
 
-since=""
+since="" reset=0
 args=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --since) since="$2"; shift 2 ;;
+    --reset-rounds) reset=1; shift ;;
     *) args+=("$1"); shift ;;
   esac
 done
@@ -145,23 +148,60 @@ changed_files() {
 # outside the diff, and three hundred lines of copy are not. `risk.paths` are shell
 # case patterns, so `*` crosses directories.
 RISK_WHY=""
-risk_lenses() {
-  local spec range file glob hit="" extra
-  extra="$("$CFG" get '.risk.lenses[]?')"
-  [ -n "$extra" ] || return 0
-  spec="$("$CFG" get '.slices.all')"
-  range="$(slice_range "$spec")"
+# The first path on stdin that a `risk.paths` pattern matches, as "file matches glob".
+risk_match() {
+  local file glob
   while IFS= read -r file; do
     [ -z "$file" ] && continue
     while IFS= read -r glob; do
       [ -z "$glob" ] && continue
       # shellcheck disable=SC2254
-      case "$file" in $glob) hit="$file matches $glob"; break 2 ;; esac
+      case "$file" in $glob) printf '%s matches %s' "$file" "$glob"; return 0 ;; esac
     done < <("$CFG" get '.risk.paths[]?')
-  done < <(cd "$REPO_ROOT" && eval "git diff --name-only $range")
-  [ -n "$hit" ] || return 0
-  RISK_WHY="$hit"
+  done
+}
+
+diff_names() {
+  local spec range
+  spec="$("$CFG" get '.slices.all')"
+  range="$(slice_range "$spec")"
+  ( cd "$REPO_ROOT" && eval "git diff --name-only $range" )
+}
+
+risk_lenses() {
+  local extra
+  RISK_WHY="$(diff_names | risk_match)"
+  [ -n "$RISK_WHY" ] || return 0
+  extra="$("$CFG" get '.risk.lenses[]?')"
+  [ -n "$extra" ] || return 0
   printf '%s\n' "$extra"
+}
+
+# A round is one review of one head. The count lives beside the review packages, per
+# worktree and per branch, so a cap is something `kit review` refuses rather than a
+# number the orchestrator is trusted to remember: two pull requests ran 21 and 25
+# review rounds under a written cap of 2, and cost 14% of everything the funnel spent
+# over five weeks.
+ROUND=0
+claim_round() {
+  local cap="$1" head branch file count
+  head="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD | tr '/' '_')"
+  file="$OUT/rounds.$branch"
+  [ "$reset" -eq 1 ] && rm -f "$file"
+  touch "$file"
+  if grep -qxF "$head" "$file"; then
+    ROUND="$(grep -nxF "$head" "$file" | head -1 | cut -d: -f1)"
+    return 0
+  fi
+  count="$(grep -c . "$file" || true)"
+  if [ "$count" -ge "$cap" ]; then
+    die "this branch already had $count review round(s), and the $LANE lane allows $cap.
+The fix ships on its gates, and every finding still open gets a written decision in
+the pull request body. Only the user can buy another round: --reset-rounds."
+  fi
+  printf '%s\n' "$head" >>"$file"
+  ROUND=$((count + 1))
 }
 
 with_risk() {
@@ -257,6 +297,22 @@ case "${1:-}" in
     rm -f "$fa" "$fb"
     ;;
 
+  # Which lane a change belongs to, from the paths alone: before a line is written,
+  # the files the spec names; after, the branch's own diff. Triage may still raise a
+  # direct answer to risk, and nothing may lower a risk one.
+  --lane)
+    shift
+    if [ $# -gt 0 ]; then hit="$(printf '%s\n' "$@" | risk_match)"
+    else hit="$(diff_names | risk_match)"; fi
+    if [ -n "$hit" ]; then
+      printf 'risk     %s\n' "$hit"
+    elif [ -z "$("$CFG" get '.risk.paths[]?')" ]; then
+      printf 'direct   this config sets no risk.paths, so only triage or the surface table can raise it\n'
+    else
+      printf 'direct   no path in risk.paths\n'
+    fi
+    ;;
+
   --plan)
     level="${2:?usage: review-package --plan <light|standard|deep>}"
     lenses="$(with_risk "$level")"
@@ -277,14 +333,28 @@ case "${1:-}" in
   # for about half the tokens. Grouping by slice is the version of that finding
   # that keeps independent contexts where the material actually differs.
   --dispatches)
-    level="${2:?usage: review-package --dispatches <light|standard|deep>}"
-    # A second round is a round, whatever it is called. At maxRounds 1 the fix
-    # ships on its gates, and every finding still open gets a written decision.
-    if [ -n "$since" ] && [ "$("$CFG" get .maxRounds)" = 1 ]; then
-      die "maxRounds is 1 in this repo's config, so there is no fix round to review.
+    level="${2:-auto}"
+    risk_lenses >/dev/null
+    # The lane decides the width and the cap. `auto` reads it from risk.paths, and a
+    # named lane is the orchestrator passing on what triage or the user decided. A
+    # plain effort level still works, and then the paths alone pick the cap.
+    case "$level" in
+      auto)   LANE=direct; [ -n "$RISK_WHY" ] && LANE=risk ;;
+      direct|risk) LANE="$level" ;;
+      *)      LANE=direct; [ -n "$RISK_WHY" ] && LANE=risk ;;
+    esac
+    case "$level" in
+      auto|direct|risk) level="$("$CFG" get ".lanes.$LANE.effort")"; level="${level:-light}" ;;
+    esac
+    cap="$("$CFG" get ".lanes.$LANE.maxRounds")"
+    [ -n "$cap" ] || cap="$("$CFG" get .maxRounds)"
+    # A fix round at a cap of 1 is the common refusal, and it reads better before any
+    # round is counted than as "already had 1".
+    if [ -n "$since" ] && [ "${cap:-1}" -le 1 ] && [ "$reset" -eq 0 ]; then
+      die "the $LANE lane allows one review round, so there is no fix round to review.
 Run the gates on the fix and write one decision per finding still open."
     fi
-    risk_lenses >/dev/null
+    claim_round "${cap:-1}"
     lenses="$(with_risk "$level")"
     [ -n "$lenses" ] || die "no effort level \"$level\" in the config"
     slices="" solo=""
@@ -299,6 +369,7 @@ Run the gates on the fix and write one decision per finding still open."
     model="$("$CFG" get ".reviewModel.\"$level\"?" 2>/dev/null || true)"
     case "$model" in null|"") model="" ;; esac
     n=0
+    printf 'lane   %s, round %s of %s\n' "$LANE" "$ROUND" "${cap:-1}"
     printf 'effort %s%s\n' "$level" "${since:+, fix round since ${since:0:8}}"
     [ "$("$CFG" get .lane)" = lite ] && printf 'lane   lite: one round, and no findings ledger on the pull request\n'
     [ -n "$RISK_WHY" ] && printf 'risk   %s, adding: %s\n' "$RISK_WHY" "$("$CFG" get '.risk.lenses[]?' | tr '\n' ' ')"
@@ -318,6 +389,8 @@ Run the gates on the fix and write one decision per finding still open."
       [ -z "$s" ] && continue
       n=$((n + 1))
       group="" docs=""
+      guide="$("$CFG" get '.reviewGuide')"
+      [ -n "$guide" ] && docs="$(doc_path "$guide")"$'\n'
       for l in $lenses; do
         [ "$("$CFG" get ".lenses.\"$l\".slice")" = "$s" ] || continue
         # It names this slice, but it is dispatched alone below. Without this it
@@ -380,6 +453,8 @@ Run the gates on the fix and write one decision per finding still open."
       printf '\ndispatch %s   parts: %s   (alone: reads outside the diff)\n' "$n" "$l"
       [ -n "$model" ] && printf '  model %s   (config reviewModel.%s; pass it, and pass nothing otherwise)\n' "$model" "$level"
       printf '  diff  %s  (%s changed lines)\n' "$f" "$lines"
+      guide="$("$CFG" get '.reviewGuide')"
+      [ -n "$guide" ] && printf '  read  %s first\n' "$(doc_path "$guide")"
       printf '  read  every file below in full, and nothing else outside the diff\n'
       printf '  touched by the diff, to be read whole and not as hunks:\n'
       changed_files "$l" | sed 's/^/    /'

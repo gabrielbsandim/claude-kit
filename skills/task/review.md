@@ -1,258 +1,230 @@
 # task, stage 4 in full
 
 Read this when the funnel reaches stage 4, before writing the review dispatches.
-It is the depth behind the five bullets `SKILL.md` keeps inline, and it is split out
-so that a task that never reaches a review never pays for it.
+It is the depth behind the bullets `SKILL.md` keeps inline, and it is split out so
+that a task that never reaches a review never pays for it.
 
-### The screens, in a real browser, in the same round
+### One round, then a verifier
 
-A diff lens reads what the code says. It cannot tell you that the submit button
-is below the fold on a phone, that the table scrolls the page sideways, or that
-the save succeeds and the screen says nothing. So when the change touched a
-screen, the review has a browser half that runs alongside the diff dispatches.
+A round is: `kit review` prints the dispatches, each block goes verbatim to its own
+`task-funnel:funnel-reviewer`, and every Critical or Important finding they return
+goes to **one** `task-funnel:funnel-verifier` before anything is fixed.
 
 ```
-kit screens          # the routes, and the ones it could not resolve
-kit screens --json   # the same, to paste into the two dispatches
+kit review                       # the lane from risk.paths, and the round it is
+kit review --since <sha>         # risk lane, round 2: the fix diff only
+kit lane src/billing/charge.ts   # which lane a file list would take, and why
 ```
 
-`kit screens` walks the import graph from each changed file up to the router
-entry point that reaches it, so a component nested three levels below a page
-still yields a URL. Nothing here guesses a route inside a prompt.
+The verifier exists because a reviewer is paid to find things and a round is paid
+for by whatever it finds. About half of what automated review comments say is
+rejected by the people who read them, and a fix for a defect that was never there is
+new code nobody asked for, which the next round then reviews. So the verifier is
+asked to refute, and returns one of three per finding:
 
-Run the browser half when **all three** hold, and skip it silently otherwise:
+| Verdict | Means | What happens |
+| --- | --- | --- |
+| REAL | reproduced, or traced input to wrong output in the code as committed | fixed in this session, this round |
+| REFUTED | the code handles it, the input cannot reach it, or the evidence restates the claim | dropped, one row in the body's table |
+| PRE-EXISTING | real, on a line this diff did not change | one line in the body, after `kit issues related` |
 
-1. `browser.enabled` is true,
-2. the effort level is in `browser.efforts`,
-3. `kit screens` returned at least one route under `visit`.
+Its dispatch carries the worktree path, the diff files the round used, and the
+findings numbered in the order they came back. Nothing else: it has its own
+instructions. A finding the reviewer itself tagged `PRE-EXISTING` skips the verifier,
+since it costs no round either way.
+
+**REAL findings are fixed, all of them, in one pass**, then
+`kit gate implement_fix_round` and one commit. Not deferred: a verified defect in this
+change is this change's work, and a deferral is a second pull request that reloads
+all of this context to do what this one could have done in a line.
+
+### The rubric
+
+In every dispatch, because an uncalibrated reviewer is what multiplies rounds. The
+reviewer carries it in its own instructions; the dispatch does not restate it.
+
+- **Critical**: data loss, security, money, breaks production.
+- **Important**: the task is not trustworthy until fixed: incorrect or fragile
+  behaviour, a missed requirement, a literal duplicated block of logic, a swallowed
+  error, a test that asserts nothing.
+
+There is no third grade. "Coverage could be broader", naming and style are not
+reported at all: a Minor that is reported buys a table row and a decision sentence
+for work nobody is going to do.
+
+Each finding is also tagged by **origin**: `NEW` when the diff introduced it,
+`PRE-EXISTING` when the line was already like that. A reviewer that cannot tell the
+two apart sends this change back for its neighbours' defects.
+
+### ALREADY DECIDED
+
+From round 2 on, and on any review of a branch where the user already answered
+something, the task's half of the dispatch carries an `ALREADY DECIDED` list: each
+finding a previous round raised and how it was settled, fixed with the sha, refuted,
+or kept as the user chose. A reviewer that re-raises one of those is told by its own
+instructions to drop it. Without the list, the second round spends itself
+re-litigating the first.
+
+### The screens, in a real browser, on the risk lane
+
+A diff lens reads what the code says. It cannot tell you that the submit button is
+below the fold on a phone, that the table scrolls the page sideways, or that the save
+succeeds and the screen says nothing. So when a risk-lane change touched a screen, the
+review has a browser half that runs alongside the diff dispatches.
+
+```
+kit screens             # the routes, and the ones it could not resolve
+kit screens --json      # the same, to paste into the dispatch
+kit screens --preflight # whether the browser half can run at all, and why not
+```
+
+`kit screens` walks the import graph from each changed file up to the router entry
+point that reaches it, so a component nested three levels below a page still yields a
+URL. Nothing here guesses a route inside a prompt.
+
+Run the browser half when **all four** hold, and skip it otherwise:
+
+1. the lane is risk,
+2. `browser.enabled` is true and the effort level is in `browser.efforts`,
+3. `kit screens` returned at least one route under `visit`,
+4. `kit screens --preflight` printed `ready`.
+
+The preflight is there because every way this half failed before failed after the
+dispatch went out: the env file `browser.start` reads was masked by the sandbox, an
+auth variable it needed was not in that file, a previous browser profile still held
+its lock, or the port already answered from another checkout's build. It checks each
+of those and exits 3 naming the first blocker. **A blocker is a line in the report,
+never something to work around inside the lens.**
 
 Then **one** dispatch to `task-funnel:funnel-screen-lens`, answering two numbered
-parts from one visit per route: part 1 is whether it works, part 2 is whether it
-can be used. It gets the base URL, the `visit` list verbatim, the viewports, the
-spec's acceptance criteria, and `browser.uxDocs`, which is what anchors part 2 to
-this repo's conventions instead of to taste. One, not two, for the reason in the
-agent table: the browser is shared and two of them corrupt each other's reads.
-
-**Four things this stage owes you, and each one has bitten:**
+parts from one visit per route: part 1 is whether it works, part 2 is whether it can
+be used. It gets the base URL, the `visit` list verbatim, the viewports, the spec's
+acceptance criteria, and `browser.uxDocs`, which anchors part 2 to this repo's
+conventions instead of to taste. One, not two: the browser is shared and two of them
+corrupt each other's reads (`evidence.md` &middot; *One browser, one tab*).
 
 - **You bring the app up, because the lens cannot.** The agent has no `Bash` on
-  purpose, so `browser.start` and the `readyPath` poll are yours. A dispatch sent
-  at a port with nothing on it returns findings about a connection error.
-- **A port that answers is not proof it is your build.** `readyPath` proves
-  something is listening. If a dev server from an earlier task is still up on that
-  port, the lens reviews that build and reports it as this branch. Check the port
-  before starting, and if something is already there, either reuse it knowingly or
-  stop: two `npm run dev` on one port do not both bind it, and the second one
-  silently picks another port that `baseUrl` does not name.
-- **`kit screens` printing `blocked` is a result, not noise.** A dynamic route
-  with no value in `routeParams` and a component no page imports are both screens
-  nobody is going to look at. Carry them into the report.
-- **Credentials by environment variable name only.** `funnel-config check` refuses
-  a value in `browser.auth`, and the agent has no `Bash`, so it cannot read a
-  secret the dispatch did not already hand it.
+  purpose, so `browser.start` and the `readyPath` poll are yours.
+- **`kit screens` printing `blocked` is a result, not noise.** A dynamic route with
+  no value in `routeParams` and a component no page imports are both screens nobody
+  is going to look at. Carry them into the report.
+- **Credentials by environment variable name only.** `funnel-config check` refuses a
+  value in `browser.auth`, and the agent cannot read a secret the dispatch did not
+  already hand it.
 
-A finding from the lens is a finding like any other: same ledger, same rounds,
-blocks nothing on its own. A browser is the most nondeterministic thing in this
-funnel, so it never becomes a gate.
+A finding from the lens goes through the verifier like any other. A browser is the
+most nondeterministic thing in this funnel, so it never becomes a gate.
 
 ### What may actually run at once
 
-The point of parallelism here is wall clock, so it is worth being exact about what
-overlaps and what only looks like it does. Three lanes, and the rule is that a
-lane owns a resource:
+Three lanes of work, and the rule is that each owns a resource:
 
-| Lane | Owns | How many at once |
+| Work | Owns | How many at once |
 | --- | --- | --- |
 | review | nothing, it only reads diff files | up to `maxParallelAgents` |
 | browser | the shared browser, the dev server, the app's data | exactly 1 |
 | gates | the working tree | `gateJobs`, with `exclusive` gates alone |
 
-The review lane and the browser lane genuinely overlap: different resources,
-no contention. Lanes are not a licence to fan out further inside one, and
-two things that look parallelizable are not:
+Review and browser genuinely overlap. Two things that look parallel are not:
 
-- **Two vitest runs in one working tree.** Two suites in one tree fight over files
-  each of them owns, which is what `exclusive` is for and why `gateJobs` defaults to 1.
-- **The browser lane next to a heavy gate, on a small machine.** Overlapping the
-  browser with lint and types is free. Overlapping it with the suite is how a gate
-  fails for memory and gets read as a flake. Check the machine before assuming the
-  lane is free (`evidence.md` &middot; *Two things that look parallel*).
+- **Two vitest runs in one working tree.** They fight over files each of them owns,
+  which is what `exclusive` is for and why `gateJobs` defaults to 1.
+- **The browser next to a heavy gate, on a small machine.** Overlapping it with lint
+  and types is free. Overlapping it with the suite is how a gate fails for memory and
+  gets read as a flake (`evidence.md` &middot; *Two things that look parallel*).
 
-Before raising `gateJobs`, run `kit config check`: it prints, per stage, exactly
-which gates would share and which run alone, and it fails when one gate's command
-expands to another's plus a flag, since that stage is paying for the same work
-twice.
-
-Removing work beats overlapping it, and the numbers say so by a wide margin
+Before raising `gateJobs`, run `kit config check`: it prints, per stage, which gates
+would share and which run alone. Removing work beats overlapping it, by a wide margin
 (`evidence.md` &middot; *What concurrency is worth*).
 
 ### Reviewer discipline, pure token gain
 
-Put these in every review dispatch:
+The reviewer carries these in its own instructions. They are here so that a dispatch
+does not contradict them:
 
-- **Read the diff file you were given, once.** Its context lines are the changed
-  file. Do not open the file again unless a hunk is cut off, and do not run
-  `git` at all.
-- Do not sweep the codebase. Look outside the diff only for a **named** risk,
-  one focused check, naming both the risk and the check. The one exception is a
-  dispatch whose plan line says *reads outside the diff*, which arrives with the
-  list of files it may open and may open no others.
-- Do not run the suite. The implementer already did. A focused test only for a
-  specific doubt.
-- **A reviewer does not dispatch subagents.** A reviewer spawned by a reviewer
-  duplicates another at full cost and its verdict carries no weight.
+- **It reads the diff file it was given, once,** and does not run `git`.
+- It does not sweep the codebase. Outside the diff it opens only what a **named**
+  risk needs, one focused check. The exception is the `consequences` lens below.
+- It does not run the suite. The gates already did.
+- **It does not dispatch subagents.**
 - **Do not write a model into the dispatch.** The reviewer runs Sonnet from its own
-  frontmatter, because its input is already scoped for it: a diff file that is
-  already written, plus an exact document list. The one legitimate override is a
-  `model` line `kit review` printed, which it prints only when this repo's
-  `reviewModel` asks for an escalation at this effort level. No line, no model
+  frontmatter. The one legitimate override is a `model` line `kit review` printed,
+  which it prints only when `reviewModel` asks for one at this effort level
   (`evidence.md` &middot; *The model of a dispatch*).
-- The final message **is** the report: verdict first, no preamble, no closing
-  summary.
+- The final message **is** the report: verdict first, no preamble.
 
-### The two lenses most repos are missing
-
-Both were the human reviewer's finding number one on the first two pull requests
-this funnel delivered, and none of the code lenses had reached them
-(`evidence.md` &middot; *The two lenses*).
-
-**`failure-edges`**. Walk every new I/O call and answer, per call: is there a
-`catch`, is there a timeout, does the failure leave a log, and what is lost if it
-throws here.
+### Two lenses that arrive with their own reading list
 
 **`claims`**. Every sentence this change writes **or leaves standing** is re-read
 against the code as committed. What gets through the other lenses is the prose the
 change **falsified**, not the prose it asserts. `kit review` hands this lens a
-**grep-precomputed candidate list** instead of two 15 KB files to read, built from
-the declaration names and multi-digit literals the diff touched. Candidates, not
+grep-precomputed candidate list, built from the declaration names and multi-digit
+literals the diff touched, instead of whole documents to read. Candidates, not
 findings: each is verified against the code.
 
-### The lens that is allowed to read outside the diff
+**`consequences`**. Every other rule makes a reviewer cheap by refusing it the
+codebase, and the defects that refusal hides are the ones whose cause is in the diff
+and whose effect is not: a value hardcoded to `0` that silenced a warning two hundred
+lines lower, a `\d+` regex against a `VARCHAR(32)` column
+(`evidence.md` &middot; *Buying back the reading a slice lens is denied*). So this lens
+is declared `readsOutsideDiff`, **dispatched alone**, and handed two precomputed lists
+it may not leave:
 
-Every rule above makes a reviewer cheap by refusing it the codebase, and that
-refusal has a cost of its own: the defects it cannot see are the ones whose cause
-is in the diff and whose effect is not. Measured on pull requests 879 and 880, an
-outside reviewer reading whole files returned **four findings each**, eight of
-eight of that shape, and no slice lens had reached any of them: a value hardcoded
-to `0` that silenced a warning rendered two hundred lines lower in the same file,
-a `save` action validating a field the function it routes to ignores, a `\d+`
-regex against a `VARCHAR(32)` column, an interval anchored to the newest tag so a
-failed release is skipped forever.
+- **the files the diff touched, to be read whole**, ranked by how much of each the
+  change rewrote, capped at 25, with a file over 40 KB named as skipped rather than
+  dropped, because a list with a silent gap in it is a list an agent goes and fills;
+- **the callers outside the diff** of the declarations the diff exports, ranked by
+  how many of them each file references.
 
-So one lens buys the permission back, `consequences`, and pays for it with grep
-rather than with a sweep. It is declared `readsOutsideDiff` and **dispatched
-alone**: an agent given one prompt that says "read only the diff" and another that
-says "open these files" follows the looser one. `kit review` hands it two lists,
-both precomputed, and it may open nothing else:
+Its question is: **what else already depended on what this changed, and does it still
+hold?** A finding here still needs a named consumer and a concrete failure.
 
-- **the files the diff touched, to be read whole and not as hunks.** Ranked by how
-  much of each the change rewrote, capped at 25, and a file over 40 KB is named as
-  skipped rather than dropped, because a list with a silent gap in it is a list an
-  agent goes and fills. `git diff -U8` is eight lines of context, and the
-  consequence of a change is routinely further away than that *inside the same
-  file*.
-- **the callers outside the diff**, from the declarations the diff exports,
-  ranked by how many of them each file references. Exported only: the unfiltered
-  form on 880 yielded `result`, `hours` and `rate`, which rank the schema first
-  and spend the whole budget on files that merely contain the word.
+### The second round, on the risk lane only
 
-Its question is not "is this line correct". It is: **what else already depended on
-what this changed, and does it still hold?** Signature, ordering, a default now
-written where a caller reads it, a column narrower than the value, a branch made
-unreachable, a warning silenced. A finding here still needs a named consumer and a
-concrete failure, and it grades on the same rubric as any other lens.
+The direct lane has one round: the fix ships on its gates. The risk lane runs
+`kit review --since <the sha round 1 reviewed>` once, and that round is
+**incremental**. Each lens receives the fix diff plus the round 1 findings it is
+verifying, answers `ADDRESSED` or `NOT ADDRESSED` per finding, and reports only new
+Critical or Important breakage inside the fix diff, plus one thing that is not a
+severity: **prose the fix falsified**, which it reports whatever its weight, because
+the fix introduced it (`evidence.md` &middot; *What a second round returns*).
 
-### Rounds are the expensive unit
+**A slice the fix never touched is not dispatched.** A `--since` round prints
+`skipped` for it, and that line is the whole instruction. A reviewer at an empty diff
+still pays a full cold context to report nothing (`evidence.md` &middot; *An empty
+slice on a fix round*).
 
-Rubric, in every dispatch, because an uncalibrated reviewer is what multiplies
-rounds:
+### The cap is counted
 
-- **Critical**: data loss, security, money, breaks production.
-- **Important**: the task is not trustworthy until fixed: incorrect or fragile
-  behaviour, a missed requirement, a literal duplicated block of logic, a
-  swallowed error, a test that asserts nothing.
-- **Minor**: "coverage could be broader", naming, style. **Minor never enters
-  the loop.** It goes to a deferred ledger, which is a file, not prose in the
-  pull request.
+`kit review` records each head SHA it reviewed, per branch. The same head again is
+the same round; a new head past the lane's cap is refused with exit 3. The cap comes
+from `lanes.<lane>.maxRounds`, falling back to `maxRounds`. Only the user buys
+another round, with `kit review --reset-rounds`, and the agent does not run that on
+its own: two pull requests once ran 21 and 25 rounds under a cap that was only
+written down (`evidence.md` &middot; *Rounds without a counter*).
 
-Then: **CONFIRMED** → back to stage 2 with the finding as the spec.
-**PLAUSIBLE** → one line each in the "points of attention" section of the pull
-request body, capped like every other section, with the reasoning in the ledger
-comment. Not a blocker.
+**At the cap every open finding gets a written decision** in the body's table. Silent
+discard is prohibited. A round whose fix is larger than the original commit is not a
+round, it is the spec having been wrong: say so and stop.
 
-**The ledger is posted as a comment on the pull request**, once the URL exists, in a
-repo whose config keeps one: `ledger` is false on the lite lane, and then the body is
-the only text and PLAUSIBLE reasoning is cut rather than posted. A
-comment is next to the diff, collapses on its own, and does not have to be read
-before deciding whether to review. The scratchpad file it replaced was written to
-nobody, and the body absorbed it (`evidence.md` &middot; *Why the ledger is a comment*).
+### The findings table goes in the body
 
-### The ledger is a table, and it has a budget
-
-A comment nobody finishes reading is a comment nobody read. Measured on 2026-08-29,
-the ledgers on pull requests 874, 877 and 880 carried **4515, 4432 and 3734
-characters of prose**, each more than twice the 2000 the body itself is allowed,
-and the body is the part written to be read first.
-
-So the ledger is **a table plus a few sentences**, and the split is not a style
-preference: `kit ledger` counts prose and ignores table rows, exactly as
-`kit pr-body` does, so a finding moved into a row costs nothing and a finding
-explained in a paragraph costs its full length.
-
-One row per finding, in this order, most severe first:
-
-| Sev | Lens | Verdict | Finding | Decision |
-| --- | --- | --- | --- | --- |
-| Critical | failure-edges | CONFIRMED | the retry path never logs what was lost | fixed, `a1b2c3d` |
-| Important | conventions | PLAUSIBLE | the hook could be a selector | deferred, #612 |
-
-`Finding` is one line: what is wrong, not why you believe it. `Decision` is one of
-fixed with the sha, deferred with the issue, or dismissed with four words of
-reason. The reasoning behind a finding belongs in the row's own thread if anybody
-asks for it, and until somebody asks, it is not owed.
-
-Prose is then for what a table cannot hold: what the rounds converged on, and what
-the reviewer of this pull request should look at with their own eyes.
-
-```
-kit ledger <file>          # at most 1000 characters of prose, 350 per section
-gh pr comment <n> --body-file <file>
-```
-
-Over budget it exits 3 and prints the sections by size. **Cut, do not compress**,
-and the same rule the body has applies here: everything worth keeping has a better
-home. A follow-up comment answering a review is a ledger too, and runs the same
-command: measured on the same day, the "Resposta ao review" comment on 880 was
-3419 characters against a body of 1876 (`evidence.md` &middot; *Why the ledger has a
+One row per finding that reached the verifier, most severe first. Rows cost nothing
+against `kit pr-body`'s prose budget, which is why the table replaced the separate
+ledger comment: three of those measured 3734 to 4515 characters of prose each, every
+one longer than the body it sat under (`evidence.md` &middot; *Why the ledger has a
 budget*).
 
-The re-review after a fix round is **incremental**, which is what `--since`
-does: the lens receives the fix diff plus the list of findings it is verifying,
-each answered `ADDRESSED` or `NOT ADDRESSED`, plus new breakage inside the fix
-diff only. A full re-read is warranted only when the fix moved a contract, a
-signature, a route, a schema, an order of operations, and then only for the
-lenses that contract touches.
+| Sev | Lens | Verifier | Finding | Decision |
+| --- | --- | --- | --- | --- |
+| Critical | correctness | REAL | the retry path drops the payload on timeout | fixed, `a1b2c3d` |
+| Important | consequences | REFUTED | the caller already guards the empty list | dropped |
+| Important | tests | PRE-EXISTING | the fixture never sets the tenant | #612 |
 
-**A slice the fix never touched is not dispatched at all.** A `--since` round
-prints `skipped` for it and names the slice, and that line is the whole
-instruction: do not send it, do not send it with an apology in the prompt. A
-reviewer at an empty diff still pays a full cold context to report that there is
-nothing to report, and a fix that touched only `src` was re-dispatching the tests
-and surfaces slices every round. The first round never skips, because there an
-empty slice is a fact worth having stated (`evidence.md` &middot; *An empty slice on
-a fix round*).
+`Finding` is one line: what is wrong, not why you believe it. `Decision` is fixed with
+the sha, dropped, or the issue that owns it. The body's last line is the lane marker,
+`<!-- funnel: direct -->` or `<!-- funnel: risk -->`.
 
-**A new Minor on a fix round is not reported.** What the round owes is `ADDRESSED`
-or `NOT ADDRESSED` per finding it was sent, plus anything new it grades Critical or
-Important, plus one thing that is not a severity at all: **prose the fix
-falsified**, a comment, a document or a knowledge entry the fix itself made untrue.
-That one is reported whatever its severity, because the fix introduced it. Anything
-else new and Minor is dropped, not deferred: a deferred Minor buys a ledger row and
-a decision sentence for work nobody is going to do. Measured across two second
-rounds, 13 findings, none above Minor, and the only four that changed a line were
-prose (`evidence.md` &middot; *What a second round returns*).
-
-Cap at `maxRounds`, and **at the cap every open finding gets a written
-decision**. Silent discard is prohibited. A round whose fix is larger than the
-original commit is not a round, it is the spec having been wrong: say so and
-stop.
+A comment answering a person's question in review still goes through `kit ledger`,
+which holds it to at most 1000 characters of prose. Over budget, **cut, do not
+compress**.

@@ -32,7 +32,7 @@ Stop and report, without shipping, on any of:
 - **A comment in the diff that is not a why.** At most two lines, and no ticket key,
   pull request number, date or count. `kit comments` finds them in the lines the branch
   adds; fix them before the pull request quotes the diff.
-- **No review has happened.** Ask before shipping unreviewed work; `kit review <level>`
+- **No review has happened.** Ask before shipping unreviewed work; `kit review`
   is minutes and a defect found here costs a round instead of a revert. If the user says
   ship anyway, say in the pull request body that it went out unreviewed.
 
@@ -67,8 +67,9 @@ Fill the repo's template honestly, which means four specific things:
    did not run is a lie with a green mark next to it.
 2. **Answer the surfaces question in prose**, even when the answer is nothing. A sentence
    beats a box, because the box is what gets ticked without being read.
-3. **PLAUSIBLE findings go under points of attention**, one line each. A finding you could
-   not prove is not a blocker and not nothing.
+3. **Review findings go in the body as a table**, one row each with what the verifier
+   said and the decision: fixed with the sha, dropped, or the issue that owns it. A
+   finding nobody verified is a row marked so, not a blocker and not nothing.
 4. **The body has a budget, and it is measured.** Write it to a file and run
    `kit pr-body <file>` before `gh pr create`: at most **2000 characters of prose** and
    **600 per section**, counting what you added rather than the template, its tables, its

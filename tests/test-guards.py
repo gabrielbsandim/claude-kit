@@ -78,6 +78,27 @@ def edit(path: str, old: str, new: str) -> dict:
     }
 
 
+print("== gate-env, through the dispatcher")
+with tempfile.TemporaryDirectory() as repo:
+    os.makedirs(os.path.join(repo, ".git"))
+    os.makedirs(os.path.join(repo, ".claude"))
+    heap = "NODE_OPTIONS=--max-old-space-size=6144"
+    with open(os.path.join(repo, ".claude", "funnel.config.json"), "w") as fh:
+        json.dump({"gates": {"types": {"cmd": heap + " npx tsc --noEmit"},
+                             "test": {"cmd": "npx vitest run"}}}, fh)
+    for cmd, want in [
+        ("npx tsc --noEmit", BLOCK),
+        ("env -C /w npx tsc --noEmit -p tsconfig.json 2>&1 | head", BLOCK),
+        (heap + " npx tsc --noEmit", PASS),
+        ("kit gate --gates types", PASS),
+        ("npx vitest run src/a.test.ts", PASS),
+        ("cat tsconfig.json", PASS),
+        ("git status", PASS),
+    ]:
+        equivalent(f"gate-env: {cmd[:52]}", "gate-env.py", {**bash(cmd), "cwd": repo}, want)
+    equivalent("gate-env: a repo without config constrains nothing", "gate-env.py",
+               {**bash("npx tsc --noEmit"), "cwd": tempfile.gettempdir()}, PASS)
+
 print("== env-guard, through the dispatcher")
 for cmd, want in [
     (f"cat {D}", BLOCK),

@@ -127,6 +127,15 @@ jobs:
       - name: The Stop hook blocks an unverified edit and nothing else
         run: python3 tests/test-phase-gate.py
 
+      - name: The funnel Stop hook asks for kit gate where a funnel lives
+        run: python3 tests/test-gate-receipt.py
+
+      - name: kit escapes counts a later fix on the same source file
+        run: python3 tests/test-escapes.py
+
+      - name: kit eval-delta reads both arms
+        run: python3 tests/test-eval-delta.py
+
       - name: kit usage splits the main loop from the agents
         run: python3 tests/test-usage.py
 

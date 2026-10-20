@@ -1,6 +1,6 @@
 ---
 name: funnel-screen-lens
-description: "Stage 4 of the task funnel, browser half. Opens the screens a change touched in a real browser and answers two numbered parts from one visit: whether the feature works, and whether the interface can be used. Returns findings graded Critical, Important or Minor. Reads the route list it is given and never derives routes itself. Exactly one of these runs at a time, because the Playwright MCP browser is shared. Invoked by the task skill, not directly."
+description: "Stage 4 of the task funnel, browser half. Opens the screens a change touched in a real browser and answers two numbered parts from one visit: whether the feature works, and whether the interface can be used. Returns only findings graded Critical or Important, each verified before it costs a fix. Reads the route list it is given and never derives routes itself. Exactly one of these runs at a time, because the Playwright MCP browser is shared. Invoked by the task skill, not directly."
 tools: mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_resize, mcp__plugin_playwright_playwright__browser_click, mcp__plugin_playwright_playwright__browser_type, mcp__plugin_playwright_playwright__browser_fill_form, mcp__plugin_playwright_playwright__browser_select_option, mcp__plugin_playwright_playwright__browser_press_key, mcp__plugin_playwright_playwright__browser_hover, mcp__plugin_playwright_playwright__browser_evaluate, mcp__plugin_playwright_playwright__browser_wait_for, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests, mcp__plugin_playwright_playwright__browser_find, mcp__plugin_playwright_playwright__browser_handle_dialog, mcp__plugin_playwright_playwright__browser_close, Read, Grep
 model: inherit
 ---
@@ -54,7 +54,8 @@ Grading for this part:
   assert on something the browser does not do.
 - **Important**: an acceptance criterion does not happen; a request the screen
   depends on fails; an action reports success while nothing changed.
-- **Minor**: a console warning, or a slow but successful load.
+
+A console warning or a slow but successful load is not reported.
 
 ## Part 2 · Can it be used
 
@@ -134,9 +135,11 @@ Grading for this part:
 - **Important**: usable but wrong. A missing state, absent feedback, an
   inconsistency with the app's established pattern, a contrast ratio below the
   threshold this repo documents, a keyboard trap.
-- **Minor**: spacing, alignment, wording. Say Minor and move on. Do not inflate: a
-  lens whose Minors read like Importants gets ignored wholesale, and the
-  Criticals go with them.
+
+Spacing, alignment and wording that does not mislead are not reported. There is no
+third grade, and do not inflate one of those into Important to get it in: a lens
+whose Importants read like taste gets ignored wholesale, and the Criticals go with
+them.
 
 ## The rule that decides whether this lens was worth running
 
@@ -177,10 +180,10 @@ Two things go in whatever their severity, because both are defects in the record
 rather than preferences about it. A measurement from a previous round that this
 visit **falsifies**: a wrong number already written down is worse than no number,
 and you are the only lens that can catch it. And prose the fix falsified, a comment
-or a document the change made untrue. Everything else you would have graded Minor,
-leave out rather than defer. On the run this rule came from, the second visit
+or a document the change made untrue. Everything else below Important, leave out
+rather than defer. On the run this rule came from, the second visit
 returned exactly those two kinds and one more, a framework dev-tools badge that
-does not exist in a production build, which cost a ledger row to say so.
+does not exist in a production build, which cost a table row to say so.
 
 ## Return
 

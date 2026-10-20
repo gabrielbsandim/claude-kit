@@ -4,6 +4,7 @@
     screen-routes            a table: file, route, how the route was found
     screen-routes --json     the same, for a dispatch to consume
     screen-routes --base X   override the base ref
+    screen-routes --preflight  can a browser lens run here at all, before one is sent
 
 The browser lens needs URLs, and the diff only has file paths. Guessing the URL
 in the dispatch prompt is how a lens ends up proving the wrong screen, or the
@@ -14,11 +15,15 @@ until a router entry point is found, which is why this is a graph walk and not a
 path rewrite. Files whose route cannot be established are reported as unresolved
 rather than dropped: an unproven screen has to be visible.
 """
+import glob
 import json
 import os
 import re
+import socket
+import stat
 import subprocess
 import sys
+from urllib.parse import urlparse
 
 KIT_BIN = os.path.dirname(os.path.abspath(__file__))
 EXTENSIONS = (".tsx", ".ts", ".jsx", ".js", ".mts", ".mjs")
@@ -159,6 +164,110 @@ def matches(path, globs):
     return False
 
 
+
+# Every way a screen lens came back NOT PROVEN for a reason that was never the change,
+# checked before it is sent. Measured over 70 lens runs: 14 never reached a screen,
+# most on "Browser is already in use" from a profile another session held, the rest
+# on a session that could not log in or a server that was not up.
+def preflight(repo_root, browser):
+    if not browser.get("enabled"):
+        print("skip     browser.enabled is false, so there is no browser half")
+        return 0
+    blocked = []
+
+    def say(ok, text):
+        print(("ok       " if ok else "BLOCK    ") + text)
+        if not ok:
+            blocked.append(text)
+
+    start = browser.get("start") or ""
+    names = [n for n in ((browser.get("auth") or {}).get(k) for k in ("userEnv", "passEnv")) if n]
+    found = re.search(r"--env-file[= ](\S+)", start)
+    known = set(os.environ)
+    unread = False
+    if found:
+        path = found.group(1).strip("'\"")
+        path = path if os.path.isabs(path) else os.path.join(repo_root, path)
+        try:
+            mode = os.stat(path).st_mode
+        except OSError:
+            mode = None
+        unread = mode is None or stat.S_ISCHR(mode)
+        if mode is None:
+            say(False, "%s, which browser.start loads, does not exist" % path)
+        elif stat.S_ISCHR(mode):
+            say(False, "%s is masked by a sandbox read deny, so browser.start cannot load it; "
+                       "start the app outside the sandbox" % path)
+        else:
+            try:
+                with open(path, errors="ignore") as fh:
+                    known |= {l.split("=", 1)[0].strip().removeprefix("export ") for l in fh if "=" in l}
+                say(True, "%s readable" % path)
+            except OSError as err:
+                unread = True
+                say(False, "%s unreadable: %s" % (path, err.strerror))
+    for name in names:
+        if unread and name not in known:
+            continue
+        say(name in known, "%s %s" % (name, "is set" if name in known else
+                                    "is in neither the environment nor the env file, so the lens cannot log in"))
+
+    for lock in glob.glob(os.path.expanduser("~/.cache/ms-playwright*/mcp-*/SingletonLock")):
+        try:
+            pid = int(os.readlink(lock).rsplit("-", 1)[-1])
+            os.kill(pid, 0)
+        except (OSError, ValueError):
+            continue
+        say(False, "the browser profile %s is held by pid %d; close that browser or the lens "
+                   "fails with \"already in use\"" % (os.path.dirname(lock), pid))
+
+    url = urlparse(browser.get("baseUrl") or "http://localhost:3000")
+    port = url.port or (443 if url.scheme == "https" else 80)
+    try:
+        socket.create_connection((url.hostname or "localhost", port), timeout=1).close()
+        listening = True
+    except OSError:
+        listening = False
+    if not listening:
+        say(True, "port %d free: start the app with browser.start" % port)
+    else:
+        owner = port_owner(port)
+        if owner is None:
+            say(True, "port %d answers; could not tell which checkout serves it, so check before "
+                      "trusting what the lens sees" % port)
+        else:
+            mine = owner == repo_root or owner.startswith(repo_root + os.sep)
+            say(mine, "port %d is served from %s%s" % (port, owner, "" if mine else
+                ", not this checkout: the lens would review that build"))
+    print("\n%s" % ("ready" if not blocked else "%d blocker(s): fix them or skip the browser half "
+                                                  "and say so in the report" % len(blocked)))
+    return 3 if blocked else 0
+
+
+def port_owner(port):
+    """The working directory of the process listening on port, or None."""
+    inodes = set()
+    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            rows = open(table).read().splitlines()[1:]
+        except OSError:
+            continue
+        for row in rows:
+            cols = row.split()
+            if len(cols) > 9 and cols[3] == "0A" and int(cols[1].rsplit(":", 1)[1], 16) == port:
+                inodes.add(cols[9])
+    for fd in glob.glob("/proc/[0-9]*/fd/*"):
+        try:
+            target = os.readlink(fd)
+        except OSError:
+            continue
+        if target.startswith("socket:[") and target[8:-1] in inodes:
+            try:
+                return os.readlink(os.path.join(fd.split("/fd/")[0], "cwd"))
+            except OSError:
+                return None
+    return None
+
 def main():
     argv = sys.argv[1:]
     as_json = "--json" in argv
@@ -169,6 +278,8 @@ def main():
     repo_root = run(["git", "rev-parse", "--show-toplevel"], ".").strip()
     cfg = config(repo_root)
     browser = cfg.get("browser") or {}
+    if "--preflight" in argv:
+        sys.exit(preflight(repo_root, browser))
     app_dir = browser.get("appDir", "src/app")
     entry_names = tuple(browser.get("entryFiles") or ["page.tsx", "page.ts", "page.jsx", "page.js"])
     globs = browser.get("screenGlobs") or ["src/app/**", "src/features/**", "src/components/**"]

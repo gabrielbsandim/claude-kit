@@ -83,6 +83,7 @@ defaults_json() {
       lenses: { correctness: { slice: "src", docs: [] } },
       effort: { light: ["correctness"], standard: ["correctness"], deep: ["correctness"] },
       lane: "full",
+      lanes: { direct: { effort: "light", maxRounds: 1 }, risk: { effort: "deep" } },
       maxRounds: 2,
       ledger: true,
       maxParallelAgents: 3,
@@ -148,7 +149,7 @@ resolve() {
     subst'
 }
 
-KNOWN_KEYS='["$schema","base","docs","branch","worktree","gates","stages","slices","lenses","effort","reviewModel","lane","risk","prices","maxRounds","ledger","maxParallelAgents","gateJobs","flaky","browser","board","prBody","comments"]'
+KNOWN_KEYS='["$schema","base","docs","branch","worktree","gates","stages","slices","lenses","effort","reviewModel","lane","risk","lanes","reviewGuide","prices","maxRounds","ledger","maxParallelAgents","gateJobs","flaky","browser","board","prBody","comments"]'
 
 cmd="${1:-print}"
 case "$cmd" in
@@ -256,6 +257,21 @@ case "$cmd" in
         ;;
       *) printf 'lane     must be "full" or "lite", got "%s"\n' "$lane" >&2; status=1 ;;
     esac
+
+    # A lane names an effort level, and a level nobody defined reviews nothing.
+    while IFS= read -r pair; do
+      lane="${pair%% *}"; level="${pair##* }"
+      if [ "$(merged | jq -r --arg l "$level" '.effort[$l] // "MISSING"')" = MISSING ]; then
+        printf 'lanes    %s uses effort "%s", which is not defined\n' "$lane" "$level" >&2
+        status=1
+      fi
+    done < <(merged | jq -r '.lanes // {} | to_entries[] | "\(.key) \(.value.effort // "light")"')
+
+    guide="$(merged | jq -r '.reviewGuide // empty')"
+    if [ -n "$guide" ] && [ ! -f "$REPO_ROOT/$guide" ] && [ ! -f "$(dirname "$(dirname "$CONFIG_PATH")")/$guide" ]; then
+      printf 'guide    %s missing\n' "$guide" >&2
+      status=1
+    fi
 
     while IFS= read -r lens; do
       [ -z "$lens" ] && continue
