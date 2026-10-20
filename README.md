@@ -26,19 +26,21 @@ the extra checks.
 ## Why use it
 
 Same model, same prompts, same repository, with the plugin and without it, measured
-per lane: two tasks per lane, two runs each, on 2026-10-20 with
-`claude plugin eval --ablation with-without`.
+per lane, two runs per task, on 2026-10-20 with `claude plugin eval --ablation with-without`.
 
 | | Claude Code alone | With task-funnel |
 | --- | --- | --- |
-| **Simple task** (a new helper, a copy fix): direct lane | right in most runs, 0.83 | right, 0.92, and asks nothing extra |
-| cost, time | US$ 0.17, 46 s | US$ 0.29, 64 s |
+| **Trivial task** (two copy fixes): trivial lane | changes the text, skips your checks, 0.76 | changes it, runs your checks, no agent and no issue on top, 0.92 |
+| cost, time | US$ 0.14, 38 s | US$ 0.27, 50 s |
+| **Simple task** (a new helper): direct lane | right, 1.00 | right, 1.00, and asks nothing extra |
+| cost, time | US$ 0.18, 54 s | US$ 0.30, 64 s |
 | **Risky task** (a fix or a rule on money): risk lane | edits the money code before anyone checked it, 4 of 4 runs, 0.08 | checks first and stops for your approval, 4 of 4 runs, 1.00 |
 | cost, time | US$ 0.18, 42 s | US$ 0.42, 82 s, up to the spec |
 
-The whole task, issue to pushed branch and reviewed draft pull request, run end to end
-by `tests/e2e-lanes.sh` on a small repository: **95 s and US$ 0.62** on the direct
-lane, **194 s and US$ 1.05** on the risk lane. The trivial lane has no eval yet.
+The whole task, issue to pushed branch and draft pull request, run end to end by
+`tests/e2e-lanes.sh` on a small repository: **29 s and US$ 0.35** on the trivial lane,
+**95 s and US$ 0.62** on the direct lane with its review, **194 s and US$ 1.05** on the
+risk lane.
 
 ### Reliability
 
@@ -57,9 +59,9 @@ defects, all fixed before the pull request existed, with 11,419 tests green.
 
 ### Cost
 
-You pay for checks where they matter: about US$ 0.12 more than the bare model on a
-simple task, US$ 0.24 more on a risky one. At 20 tasks a week, 3 of them risky, that
-is roughly US$ 2.80 a week (an estimate from the averages above). What it saves,
+You pay for checks where they matter: about US$ 0.13 more than the bare model on a
+trivial or simple task, US$ 0.24 more on a risky one. At 20 tasks a week, 3 of them
+risky, that is roughly US$ 2.90 a week (an estimate from the averages above). What it saves,
 measured on the repository it was built against:
 
 - **Review rounds are counted and capped.** Before the cap, two pull requests ran 21 and

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# The direct and risk lanes end to end, on the eval fixture with a git directory the
+# The three lanes end to end, on the eval fixture with a git directory the
 # agent can write. `claude plugin eval` mounts it read-only, so no eval can grade a
 # branch, a commit or the review that reads one. Real sessions on your account, about
 # US$ 1 to 4 per lane, so this is not in CI.
-# Usage: tests/e2e-lanes.sh [direct|risk|all]   (E2E_BUDGET caps each lane, default 4)
+# Usage: tests/e2e-lanes.sh [trivial|direct|risk|all]   (E2E_BUDGET caps each lane, default 4)
 set -u
 PLUGIN="$(cd "$(dirname "$0")/.." && pwd)"
 LANES="${1:-all}"
-[ "$LANES" = all ] && LANES="direct risk"
+[ "$LANES" = all ] && LANES="trivial direct risk"
 fail=0
 
 check() {
@@ -64,6 +64,14 @@ pushed_touches() { [ -n "$BRANCH" ] && git -C "$ROOT/remote.git" log --name-only
 
 for lane in $LANES; do
   case "$lane" in
+    trivial)
+      run_lane trivial 'A mensagem de texto longo esta como "Texto maior que o permitido", e o produto quer "Texto acima do limite permitido". Troca e abre a PR. Commit e push estao autorizados, nao precisa me perguntar.'
+      check "a branch off trunk was pushed with src/messages.ts" 'pushed_touches src/messages.ts'
+      check "trunk on the remote is untouched" '[ "$(git -C "$ROOT/remote.git" rev-list --count trunk)" = 1 ]'
+      check "no funnel agent at all (triage, test writer, reviewer, verifier)" '! grep -qE "^AGENT funnel-(triage|test-writer|reviewer|verifier)$" "$EV"'
+      check "no issue was created" '! grep -qE "^BASH .*(issue create|/issues)" "$EV"'
+      check "the gates ran" 'grep -qE "^BASH .*(ci/(lint|types|test)\.sh|kit\"? gate)" "$EV"'
+      ;;
     direct)
       run_lane direct 'A observacao da medicao precisa ser cortada em 500 caracteres, com "..." no fim quando cortar. Cria uma funcao para isso em src/texto.ts e abre a PR. Commit e push estao autorizados, nao precisa me perguntar.'
       check "a branch off trunk was pushed with src/texto.ts" 'pushed_touches src/texto.ts'

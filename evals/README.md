@@ -54,6 +54,13 @@ arm, US$ 5.35, with `--allow-tools Bash Write Edit`:
 | `investigate-real-bug` | 1.00 | 1.00 |
 | `ship-stops-on-red-gate` | 0.83 | 0.92 |
 
+`trivial-lane-behaviour` (a copy string, with no issue named) was added later the same
+day, 2 runs per arm, US$ 0.75: 1.00 with the plugin, 0.86 without, because the bare
+model never runs the gates. With the plugin no funnel agent was dispatched and no issue
+created. Its `changed-the-string` grader is a `regex` on the trace, so an `Edit` and a
+`sed` both count: `tool_used` takes one tool, and the e2e run changed the string with
+`sed`.
+
 Mean delta +0.32. The risk lane is where the plugin pays: given `Write`, the bare model
 edits `src/money.ts` and `src/medicao.ts` on the spot, and the plugin stops with a spec
 every time. On the direct and copy cases both arms write the code without asking,
@@ -137,12 +144,13 @@ directory with a writable git, runs `claude -p` with this plugin, and checks the
 state and the order of the dispatches. It spends real money, so it is not in CI.
 
 ```sh
-tests/e2e-lanes.sh            # both lanes; E2E_BUDGET caps each, default US$ 4
+tests/e2e-lanes.sh            # all three lanes; E2E_BUDGET caps each, default US$ 4
 tests/e2e-lanes.sh risk
 ```
 
 | Lane | Checks | 2026-10-20 |
 |---|---|---|
+| trivial | branch pushed with the change, trunk untouched, no funnel agent at all, no issue created, the gates ran | 5 of 5, US$ 0.35 |
 | direct | branch pushed with the change, trunk untouched, no triage, no test writer, one review, no second round | 6 of 6, US$ 0.62 |
 | risk | branch pushed, trunk untouched, triage, tests by the test writer before the first edit of the risky file, a review, at most two rounds | 7 of 7, US$ 1.05 |
 
