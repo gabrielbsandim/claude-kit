@@ -1,9 +1,17 @@
 # Eval suite
 
-Three cases, and the honest status: **the schema is validated, the suite has never
-been run.** `claude plugin eval` is early access and was not enabled on the account
-this was written from, so `claude plugin eval init` refused and there is no recorded
-score. Treat the numbers as absent, not as passing.
+First recorded run, 2026-10-19 on Claude Code 2.1.304, with the no-plugin baseline
+(`--ablation with-without`), US$ 1.65 in total:
+
+| Case | With plugin | Without |
+|---|---|---|
+| `routing-investigate` | 1.00 | 0.50 |
+| `routing-implement` | 1.00 (`task` fired 3/3) | 1.00 |
+| `config-driven-gates` | 0.75 | 0.75 |
+
+Only `routing-investigate` separates the arms. The other two are too easy: without the
+plugin the model also holds off editing, and also finds `funnel.config.json` with Read,
+so the Bash grader fails both arms alike.
 
 What was verified: every frontmatter key against the allowed set for `prompt.md`,
 `case.yaml` and each grader type, by `tests/check-eval-schema.py`, which runs in CI.
@@ -25,7 +33,7 @@ It needs `--scaffold`, which runs the case's bash as you. Read
 `config-driven-gates/case.yaml` before passing that flag.
 
 ```sh
-claude plugin eval . --scaffold                    # all three
+claude plugin eval . --scaffold --allow-tools Bash  # all three
 claude plugin eval . --case 'routing-*'            # no scaffold needed
 claude plugin eval . --json evals/results/run.json --threshold 0.8
 ```
