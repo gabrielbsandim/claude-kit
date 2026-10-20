@@ -381,7 +381,7 @@ directory, and one such path fails the whole add. `write-tree` then returns the
 tree already in the index, HEAD's, and nothing says so.
 
 Every receipt written after that verifies clean against **any** uncommitted change,
-which is the one thing a receipt exists to refuse. Found in obranova on 2026-08-30:
+which is the one thing a receipt exists to refuse. Found on the repository this was built against on 2026-08-30:
 three character devices in the repository root, `.bash_profile`, `.bashrc` and
 `.gitconfig`, each a bind mount over `/dev/null` created by the agent sandbox to
 deny reads, none of which exist outside it. The gate had been reporting
@@ -424,7 +424,7 @@ names, one of them the `pickCostSnapshot` that was finding number two.
 ## The push that runs the gates a second time
 
 A repository whose pre-push hook runs its own lint, types and suite runs them again
-on a tree `kit gate ship` has already proved. Measured in obranova on 2026-08-30
+on a tree `kit gate ship` has already proved. Measured on the repository this was built against on 2026-08-30
 against a clean `develop`: lint 101s, types 72s, suite 186s, so **359 seconds per
 push**, and a fix round pushes again. The hook's guard is one line, and it fails
 open, which is what makes it safe to add:

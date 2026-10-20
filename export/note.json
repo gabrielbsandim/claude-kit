@@ -24,10 +24,6 @@
     {
       "from": "With the vault's MCP server that\nis `kb_reindex`; otherwise whatever the vault's own indexer is.",
       "to": "With an MCP search server that\nis its reindex tool; otherwise whatever the vault's own indexer is."
-    },
-    {
-      "from": "> Measured 2026-08-17: obranova is pt-BR, the other seven are English. Reproduce with\n> `for r in ~/work/*/; do git -C $r log --oneline -5 --pretty=%s; done`.",
-      "to": "> Measured 2026-08-17: one repository writes commits in Portuguese, the other seven in\n> English. Reproduce with `for r in ~/work/*/; do git -C $r log --oneline -5 --pretty=%s; done`."
     }
   ]
 }

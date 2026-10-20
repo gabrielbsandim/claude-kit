@@ -41,8 +41,8 @@ work_tree_sha() {
   #
   # The paths themselves are usually not the repository's: a sandbox that denies
   # reads on a dotfile does it by bind-mounting /dev/null over the path, which git
-  # sees as a character device inside the work tree. Found in obranova on
-  # 2026-08-30 as `.bash_profile`, `.bashrc` and `.gitconfig`, none of which exist
+  # sees as a character device inside the work tree. Found on the repository this
+  # was built against on 2026-08-30 as `.bash_profile`, `.bashrc` and `.gitconfig`, none of which exist
   # outside the sandbox. Nothing git refuses to stage was ever trackable, so
   # excluding exactly those paths yields the tree the working directory actually
   # has, and anything else still stops the run.

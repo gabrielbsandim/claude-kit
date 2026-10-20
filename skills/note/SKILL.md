@@ -69,8 +69,8 @@ it marks the note worth writing.
 Any claim that can age carries **the date it was measured and the command that re-measures
 it**:
 
-> Measured 2026-08-17: obranova is pt-BR, the other seven are English. Reproduce with
-> `for r in ~/work/*/; do git -C $r log --oneline -5 --pretty=%s; done`.
+> Measured 2026-08-17: one repository writes commits in Portuguese, the other seven in
+> English. Reproduce with `for r in ~/work/*/; do git -C $r log --oneline -5 --pretty=%s; done`.
 
 - A number, a count, a "right now it is like this": date plus command, always.
 - A calibrated constant: the sweep values and the size of the corpus they held for.

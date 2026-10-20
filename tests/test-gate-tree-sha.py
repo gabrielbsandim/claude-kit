@@ -10,7 +10,7 @@ the whole add. `write-tree` then returns the tree already in the index, HEAD's, 
 says nothing about it. Every receipt written after that verifies clean against any
 uncommitted change at all, which is the one thing a receipt exists to refuse.
 
-Found in obranova on 2026-08-30: three character devices in the repository root,
+Found on the repository this was built against on 2026-08-30: three character devices in the repository root,
 bind mounts over /dev/null created by an agent sandbox to deny reads on dotfiles.
 A device node cannot be created without root, and a fifo does not reproduce it
 (git ignores those silently), so the failure is injected here with a `git` stub
