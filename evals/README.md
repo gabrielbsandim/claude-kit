@@ -84,6 +84,18 @@ no case can grade a branch, a commit, a push or the review that reads a commit: 
 direct lane is graded up to its gates, and its single verified review round is not
 covered by any eval.
 
+Bash cannot write to the repository either, even with `Write` granted: one direct run
+probed with `touch src/.probe`, concluded the whole repository was read-only, and
+stopped without writing the function the `Write` tool could have written. A
+`runs-repo-gates` failure is worth reading before it is believed. The two of
+2026-10-20 were the grader's: the agent ran `for g in lint types test; do sh
+ci/$g.sh`, which the pattern now accepts, alongside `kit gate`, which cannot run here
+because it writes its receipt under `.git`. The bare model was undercounted the same
+way, running `for s in ci/*.sh; do sh "$s"`, which the pattern also accepts now.
+Regraded on kept traces, 2 runs per arm, US$ 3.00: the bare model ran the gates in 2 of
+4 trivial runs and in every direct and ship run, so on those lanes the arms score the
+same, and the README says so.
+
 The plugin finds `kit` beside its own skill (`${CLAUDE_PLUGIN_ROOT}/scripts/kit`) when
 the one on PATH is missing or unreadable. Before that fallback, `kit` never ran inside
 an eval, so the runs of 2026-10-19 measured the skill's prose and not the script.

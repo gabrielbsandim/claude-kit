@@ -2,6 +2,6 @@
 type: tool_used
 weight: 2
 tool: Bash
-input_match: 'ci/(lint|types|test)\.sh|(kit|\$K|\$KIT)"? gate'
+input_match: 'ci/(lint|types|test|\$\{?\w+\}?)\.sh|for \w+ in ci/\*\.sh; do .*?\b(sh|bash) \S*\$\{?\w+|(kit|\$K|\$KIT)"? gate'
 min: 1
 ---
