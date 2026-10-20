@@ -29,7 +29,8 @@ angle:
 - **runtime**, config, environment, scheduled jobs, webhooks, external services
 
 Skip the angles the question obviously does not touch. Two is a normal number,
-and the concurrency ceiling is `kit config get .maxParallelAgents`.
+and the concurrency ceiling is `kit config get .maxParallelAgents` (with no `kit` on
+PATH, `${CLAUDE_PLUGIN_ROOT}/scripts/kit`).
 
 Every claim a subagent returns is tagged **MEASURED**, with the command and its
 output, or **INFERRED**.

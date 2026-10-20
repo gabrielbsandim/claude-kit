@@ -18,7 +18,7 @@
       "to": "becomes the spec for a separate change; you do not edit files here. An\ninvestigation that quietly turns into a change skips triage, tests and review,\nwhich is every gate a change is supposed to pass."
     },
     {
-      "from": "and the concurrency ceiling is `kit config get .maxParallelAgents`.",
+      "from": "and the concurrency ceiling is `kit config get .maxParallelAgents` (with no `kit` on\nPATH, `${CLAUDE_PLUGIN_ROOT}/scripts/kit`).",
       "to": "and three at once is the ceiling. Without subagents, take the angles in turn."
     },
     {

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# The eval sandbox blocks writes to .git, so the cases grade the commands the agent tried.
+# The eval sandbox mounts the git directory read-only wherever it lives, so the cases grade
+# the commands the agent tried and the files it wrote, never a branch or a commit.
 # Usage: build.sh [ship-red], where ship-red also leaves a finished branch whose lint fails.
 set -e
 ROOT="$(pwd)"
@@ -45,9 +46,16 @@ cat > .claude/funnel.config.json <<'CFG'
     "correctness": { "slice": "src", "docs": [] }
   },
   "effort": { "light": ["correctness"], "standard": ["correctness"], "deep": ["correctness"] },
+  "lanes": {
+    "direct": { "effort": "light", "maxRounds": 1 },
+    "risk": { "effort": "deep", "maxRounds": 2 }
+  },
+  "risk": { "paths": ["src/money.ts", "src/medicao.ts"] },
   "ledger": false
 }
 CFG
+
+printf '.playwright-mcp/\n' > .gitignore
 
 cat > docs/flow.md <<'DOC'
 # Flow

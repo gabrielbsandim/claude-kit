@@ -36,6 +36,42 @@ not separate: the model already finds the bug, reads the gate scripts and refuse
 push on its own. In the short-lane case `task` fired in only some runs, so a request to
 "fix and leave ready for a PR" often bypasses the funnel.
 
+## Lanes
+
+The fixture's config puts `src/money.ts` and `src/medicao.ts` on `risk.paths`, so
+`kit lane` answers `risk` for them and `direct` for anything else. Three cases cover
+the lanes: `risk-lane-small-money-fix` (a one-line fix on a risk path),
+`direct-lane-behaviour` (a new function off them) and `short-lane-ships-through-gates`
+(a copy fix). Scores from 2026-10-20 on 0.18.0, every `--tag outcome` case, 2 runs per
+arm, US$ 5.35, with `--allow-tools Bash Write Edit`:
+
+| Case | With plugin | Without |
+|---|---|---|
+| `risk-lane-small-money-fix` | 1.00 | 0.00 |
+| `spec-before-code` | 1.00 | 0.17 |
+| `short-lane-ships-through-gates` | 0.83 | 0.67 |
+| `direct-lane-behaviour` | 1.00 | 1.00 |
+| `investigate-real-bug` | 1.00 | 1.00 |
+| `ship-stops-on-red-gate` | 0.83 | 0.92 |
+
+Mean delta +0.32. The risk lane is where the plugin pays: given `Write`, the bare model
+edits `src/money.ts` and `src/medicao.ts` on the spot, and the plugin stops with a spec
+every time. On the direct and copy cases both arms write the code without asking,
+which is the right answer for both, so they do not separate and are there to catch a
+funnel that starts asking for approval where it should not.
+
+**Grant `Write` and `Edit`.** Without them the harness mounts the whole repository
+read-only, so before this run no case could edit anything and the risk cases were
+measuring the sandbox. Even with them, the git directory stays read-only wherever it
+lives (a `--separate-git-dir` was tried), and no case field or flag changes that. So
+no case can grade a branch, a commit, a push or the review that reads a commit: the
+direct lane is graded up to its gates, and its single verified review round is not
+covered by any eval.
+
+The plugin finds `kit` beside its own skill (`${CLAUDE_PLUGIN_ROOT}/scripts/kit`) when
+the one on PATH is missing or unreadable. Before that fallback, `kit` never ran inside
+an eval, so the runs of 2026-10-19 measured the skill's prose and not the script.
+
 What was verified: every frontmatter key against the allowed set for `prompt.md`,
 `case.yaml` and each grader type, by `tests/check-eval-schema.py`, which runs in CI.
 An unknown key is an error in the harness, so catching it offline is most of the risk.
@@ -44,7 +80,7 @@ An unknown key is an error in the harness, so catching it offline is most of the
 |---|---|---|
 | `routing-implement` | a natural "add a field, with validation and a test" request in Portuguese | the `task` skill fires; no `Edit` happens first, because triage and spec come before a file changes |
 | `routing-investigate` | "why does this happen, before I touch anything" | `investigate` fires **and** `task` does not, which is the failure that matters: an investigation that turns into a change skips every gate |
-| `config-driven-gates` | which gate commands and base branch this repo uses | the answer names `just verify-style`, `just typecheck-strict`, `just spec --fail-fast` and `trunk`, and the run actually read the config |
+| `config-driven-gates` | which gate commands and base branch this repo uses | the answer names `just verify-style`, `just typecheck-strict`, `just spec --fail-fast` and `trunk`, commands that exist only in the config |
 
 `config-driven-gates` is the load-bearing one. Its scaffold builds a repo whose gate
 commands exist nowhere else and whose base branch is `trunk`, so an answer naming
@@ -56,7 +92,7 @@ It needs `--scaffold`, which runs the case's bash as you. Read
 `config-driven-gates/case.yaml` before passing that flag.
 
 ```sh
-claude plugin eval . --scaffold --allow-tools Bash  # all three
+claude plugin eval . --scaffold --allow-tools Bash Write Edit  # without Write and Edit the repo is read-only
 claude plugin eval . --case 'routing-*'            # no scaffold needed
 claude plugin eval . --json evals/results/run.json --threshold 0.8
 ```
@@ -93,6 +129,26 @@ grader has to state the defect as an input and its wrong output, and `scaffold.s
 has to build the smallest repository where that defect can happen, from the files
 of the original pull request at its base commit. Then run it with the ablation, and
 keep it only if the arms differ or you expect them to once the funnel changes.
+
+## The lanes end to end
+
+`tests/e2e-lanes.sh` covers what no eval can: it builds the same fixture in a temporary
+directory with a writable git, runs `claude -p` with this plugin, and checks the git
+state and the order of the dispatches. It spends real money, so it is not in CI.
+
+```sh
+tests/e2e-lanes.sh            # both lanes; E2E_BUDGET caps each, default US$ 4
+tests/e2e-lanes.sh risk
+```
+
+| Lane | Checks | 2026-10-20 |
+|---|---|---|
+| direct | branch pushed with the change, trunk untouched, no triage, no test writer, one review, no second round | 6 of 6, US$ 0.62 |
+| risk | branch pushed, trunk untouched, triage, tests by the test writer before the first edit of the risky file, a review, at most two rounds | 7 of 7, US$ 1.05 |
+
+The first risk runs skipped triage twice: given a spec already approved in the
+request, the agent measured the bug itself and went straight to the tests. The rule
+now sits where the worktree is created, and the third run dispatched triage first.
 
 ## What is not covered
 

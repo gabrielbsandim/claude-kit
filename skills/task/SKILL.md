@@ -32,21 +32,26 @@ kit lane src/billing/fee.ts    # direct or risk, from the repo's risk.paths
 kit review                     # the review plan for this branch's lane
 ```
 
-If `kit` is not on PATH, run `/task-funnel:setup` once. If the repo has no
-config, `kit config init` writes a starting one and `kit config check`
-validates it.
+If `kit` is not on PATH, or cannot run (a sandbox that hides the directory its link
+points into), use the copy shipped beside this skill for the whole task:
+`${CLAUDE_PLUGIN_ROOT}/scripts/kit`. Write that absolute path wherever this skill, its
+reference files or an agent's dispatch says `kit`, because a Bash call does not keep
+an alias. `/task-funnel:setup` puts `kit` on PATH for later sessions. If the repo has
+no config, `kit config init` writes a starting one and `kit config check` validates it.
 
 ## Before stage 0: is this skill the one that shipped
 
 ```
-kit version 0.18.0
+kit version 0.18.1
 ```
 
 The literal is the version this file shipped in, so the command compares the text you
 are reading against what is installed (`evidence.md` &middot; *Stale kit*).
 
-- **STALE SKILL**: the caller declares a version newer than anything installed. Tell
-  the user in one line and stop.
+- **STALE SKILL**: the caller declares a version newer than anything installed, so
+  this skill was loaded from a directory (a plugin under development, or an eval)
+  and the `kit` on PATH belongs to an older copy. Use
+  `${CLAUDE_PLUGIN_ROOT}/scripts/kit` for the whole task, as above, and carry on.
 - **STALE KIT**: run the `kit setup` line it prints, then carry on.
 - **`unknown subcommand: version`**: the `kit` on PATH is older than 0.3.0. `kit setup`
   from the newest installed copy fixes it:
@@ -201,11 +206,13 @@ reproduces it. Show it as part of the lane announcement and continue.
 
 ### Risk: the premise check
 
-One dispatch to `funnel-triage`, structured return. The gate reads `VERDICT` before
-anything else:
+One dispatch to `funnel-triage`, structured return, even when the user hands you a
+spec already approved: approval settles what to build, and the premise check measures
+whether the code is what the request assumes. The gate reads `VERDICT` first:
 
 - `PROCEED` → show the user the spec in 5 to 10 lines, with the PREMISE block, and
-  **wait for approval**. This is the one question the funnel keeps, because a spec that
+  **wait for approval**, unless the user already approved this spec and the PREMISE
+  block contradicts nothing in it. This is the one question the funnel keeps, because a spec that
   is wrong makes every later stage correct against the wrong thing.
 - `DIRECT_LANE` → the premise holds and no risky surface moves. Say so in one line with
   what triage checked, and run the direct lane on the spec it returned. Do not
@@ -249,6 +256,10 @@ Not a subagent. Ask yourself, in writing:
 4. What would make this "the spec was wrong" rather than "the code was wrong"?
 
 ## Stage 2 · The worktree, and on the risk lane the tests
+
+**Risk lane: no worktree without a `funnel-triage` VERDICT from this task.** Measuring
+the bug yourself is not it: the premise check is a reader that did not write the
+spec, and a spec the user approved in the request does not skip it.
 
 ```
 kit worktree add <issue> <slug> --kind <feature|bug|refactor|chore>

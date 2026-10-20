@@ -1,0 +1,4 @@
+schema_version: "1.0"
+name: risk-lane-small-money-fix
+context:
+  scaffold_script: scaffold.sh

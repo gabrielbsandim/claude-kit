@@ -38,6 +38,32 @@ per-project permission. Seven review passes found 6 Important defects, all fixed
 before the pull request existed. 838 test files and 11,419 tests green. One hour
 45 minutes, unattended.
 
+## With it and without it, measured
+
+`claude plugin eval --ablation with-without` runs each case twice, once with this
+plugin and once with the bare model, on the same fixture repo and the same prompt.
+Scores from 2026-10-20 on 0.18.0, 2 runs per arm (3 on the routing case):
+
+| Asked | With the plugin | Without |
+| --- | --- | --- |
+| a one-line fix in a file on `risk.paths` | 1.00: premise checked, spec, stops for approval | 0.00: edits the money code on the spot |
+| a new approval rule on money | 1.00: spec with the boundary and a distinct approver | 0.17: edits the code |
+| a copy fix, "leave it ready for a PR" | 0.83 | 0.67 |
+| "why does this happen, before I touch anything" | 1.00: investigates, never edits | 0.50 |
+| a new function off the risk paths | 1.00 | 1.00 |
+| find a real bug, ship a branch whose lint is red | 1.00 and 0.83 | 1.00 and 0.92 |
+
+Mean delta +0.32 on the outcome cases. Where the change can hurt, the bare model
+writes first and the plugin does not; where it cannot, both arms do the right thing,
+and those cases are there to catch a funnel that starts asking where it should not.
+The plugin arm costs about twice as much per run (US$ 0.36 against 0.13 on the risky
+fix). What no eval can grade is the part after the code: the harness mounts the git
+directory read-only. `tests/e2e-lanes.sh` runs both lanes for real against the same
+fixture, and on 2026-10-20 the direct lane passed 6 of 6 checks for US$ 0.62 (branch
+pushed, one review round, no triage) and the risk lane 7 of 7 for US$ 1.05 (triage,
+tests by an agent before the first edit, review). Method and every run:
+[`evals/README.md`](evals/README.md).
+
 ## Install
 
 ```sh
@@ -185,7 +211,7 @@ These are commands rather than instructions, because prose does not execute:
 | `kit review --disjoint a b` | guessing whether two stages can run in parallel. It answers from the file lists. |
 | `kit export-skill <name>` | a skill copied out of the plugin that still calls `kit` or a funnel agent where nothing provides them. It packages one skill as a standalone SKILL.md folder for other agents and marketplaces, applying the exact-text replacements in `export/<name>.json`, and refuses with exit 3 while anything only this plugin has is still named, or with exit 2 when a replacement no longer matches the skill. `investigate` and `note` export today; `task` is refused on purpose. |
 | `kit escapes` | not knowing whether review catches anything. A merged pull request followed within 14 days by a merged fix or revert sharing a source file is an escape, with files most pull requests touch and tests, docs and migrations excluded. Per lane, from the `<!-- funnel: ... -->` marker the body carries, and per month. `--case N --out evals` drafts an eval case from one escape. |
-| `kit eval-delta <run.json>...` | an eval threshold the bare model passes too. It pools runs of `claude plugin eval --ablation with-without` and prints, per case, the score with the plugin, without it, the delta and the cost of each arm. On the first recorded runs, 4 of 7 cases scored the same either way. |
+| `kit eval-delta <run.json>...` | an eval threshold the bare model passes too. It pools runs of `claude plugin eval --ablation with-without` and prints, per case, the score with the plugin, without it, the delta and the cost of each arm. On the runs of 2026-10-20, 3 of 6 outcome cases scored the same either way. |
 | `kit env-access [open\|guarded]` | a sandbox and a hook refusing `.env` reads in a repository where you want the agent to manage them. `open` writes `KIT_ENV_ACCESS=open` into this repository's `.claude/settings.local.json`, which worktrees inherit, and env-guard then lets `.env*` through there; `.claude.json` and `.mcp.json` stay guarded. With no argument it prints the level, where it came from, and any `Read(...)` deny rule in your settings that still covers this repository's env files, since a deny wins. The agent cannot run `open` itself: env-guard refuses it, so the choice stays yours, typed as `! kit env-access open`. |
 | the `flaky` list | a red gate in a file the diff never touched becoming a wasted fix round. |
 
@@ -509,14 +535,14 @@ early is somebody's unpushed work.
 | the context nudge | 39 cases in CI, most of them proving silence, and 13 mutations. Writing them found two real defects: the state never came back down, so a session that compacted and refilled was never warned again, and the blanket `except Exception` made a crash indistinguishable from correct silence |
 | `kit context` | 49 cases in CI, and 11 mutations to the bands and the lookup each turn it red. Three survived the first suite: the env-var window, a transcript with no requests, and the rewrite price being a constant |
 | `kit reload` | 21 cases in CI, and 6 mutations to the message each turn it red. Writing them found two bugs in one subcommand: `die` was called and never defined, and `set -euo pipefail` killed the script on the first `ls` when no copy was installed, so its only error exited 2 with no message |
-| the three lanes | 51 cases in CI pin the lane table, the rails every lane keeps, the triage verdict that lowers a lane and the counted cap. **Not yet run end to end as a task** on 0.18.0, so the verifier's refutation rate and the escape rate per lane are still to be measured with `kit escapes` |
+| the three lanes | 51 cases in CI pin the lane table, the rails every lane keeps, the triage verdict that lowers a lane and the counted cap. Run end to end by `tests/e2e-lanes.sh` on 2026-10-20: direct 6 of 6 checks, risk 7 of 7. The verifier's refutation rate and the escape rate per lane are still to be measured with `kit escapes` |
 | `kit pr-body` | 34 cases in CI, and 8 mutations to the guards each turn it red. Calibrated on three real bodies: 3123, 9999 and 11902 characters of prose against a 2000 budget |
 | `kit export-skill` | 27 cases in CI, and 7 mutations to the guards each turn it red. The exported `investigate` and `note` pass `agnix` with no tool filter |
 | the browser lens | plumbing proven: server started, polled, navigated, resized, and the layout probe named the overflowing element and the below-fold button. **Never run against a real authenticated app**, so the auth path and the dispatch prompt are unproven |
 | the lite lane | 9 cases in CI on the profile, the round cap and the one-reviewer check, and `kit review` run against a real branch. **Never run end to end as a task**, so the skill section is unproven in use |
 | `kit comments`, `kit ratchet` | 34 cases in CI against a fake ESLint, and 5 mutations turn them red. The ratchet ran against a real branch with ESLint 8; ESLint 9 with a flat config is written and **never run** |
 | Jira and Azure DevOps adapters | written from the API contract, **never run**, marked so in their own source |
-| `evals/` | schema validated offline, **never run**: `claude plugin eval` is early access and was not enabled on the account this was built from |
+| `evals/` | 11 cases, schema validated offline in CI and run with the no-plugin baseline on 2026-10-20: mean delta +0.32 on the outcome cases, table above |
 
 ## Upgrading from claude-kit
 

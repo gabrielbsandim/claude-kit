@@ -34,7 +34,8 @@ backlog.
 
 ### 1. Is this already on the board
 
-For each issue in scope, the overlap against every other open one:
+For each issue in scope, the overlap against every other open one (with no `kit` on
+PATH, every `kit` here means `${CLAUDE_PLUGIN_ROOT}/scripts/kit`):
 
 ```
 kit issues related "<title>" --files <files the body names> --parent <epic>

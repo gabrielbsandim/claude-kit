@@ -14,6 +14,9 @@ triage, a spec and a review in front of this.
 
 Input: nothing, or an issue number. Empty means the current branch.
 
+If `kit` is not on PATH or cannot run, every `kit` below means
+`${CLAUDE_PLUGIN_ROOT}/scripts/kit`, written out in each command.
+
 ## Stage 0 · Is this shippable
 
 ```
