@@ -3,3 +3,4 @@ node_modules/
 .playwright-mcp/
 __pycache__/
 dist/
+evals/results/
