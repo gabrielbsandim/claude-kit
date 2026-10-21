@@ -185,8 +185,21 @@ def newest_transcript(project_dir):
 
 def read_usage(path):
     """Every request's usage, in order, deduplicated by request and message id."""
+    return read_session(path)[0]
+
+
+def read_session(path):
+    """The usage list, and how many compactions the transcript records.
+
+    Each usage carries `_epoch`, the number of compactions before it. The usage
+    rows before the last compaction describe a prefix that no longer exists, and
+    until the first request after it there is no row describing the new one: read
+    naively, the hook that fires on the next prompt reported 315,915 tokens for a
+    session whose next request carried 95,855.
+    """
     out = []
     seen = set()
+    epoch = 0
     with open(path, errors="ignore") as handle:
         for line in handle:
             line = line.strip()
@@ -195,6 +208,9 @@ def read_usage(path):
             try:
                 row = json.loads(line)
             except ValueError:
+                continue
+            if row.get("subtype") == "compact_boundary":
+                epoch += 1
                 continue
             message = row.get("message") or {}
             usage = message.get("usage")
@@ -210,8 +226,9 @@ def read_usage(path):
             # token keys is unaffected.
             usage["_model"] = message.get("model")
             usage["_ts"] = row.get("timestamp") or ""
+            usage["_epoch"] = epoch
             out.append(usage)
-    return out
+    return out, epoch
 
 
 def is_rewrite(u):
@@ -246,6 +263,35 @@ def payback_turns(used):
     return 0.30 / saved if saved > 0 else None
 
 
+def report_fresh(args, who, tag, reqs):
+    """A compaction with no request after it yet: the new size is unknown, so no number.
+
+    HOLD rather than a fifth verdict, because whatever the summary weighs, it is
+    far below the first floor, and the nudge then records the drop and speaks again
+    on the next climb.
+    """
+    rewrites = [u for u in reqs if is_rewrite(u)]
+    spent = sum(cost(u) for u in reqs)
+    burned = sum(cost(u) for u in rewrites)
+    verdict, advice = BANDS_TOKENS[-1][1], BANDS_TOKENS[-1][2]
+    if args.json:
+        print(json.dumps({
+            "session": who, "window": args.window, "just_compacted": True,
+            "used": None, "free_pct": None, "verdict": verdict, "payback_turns": None,
+            "requests": len(reqs), "rewrites": len(rewrites),
+            "spent": round(spent, 2), "burned_on_rewrites": round(burned, 2),
+            "one_rewrite_now": None,
+        }))
+        return 0
+    print(f"{verdict}  just compacted, no request since to measure the new size")
+    print(f"  {tag}")
+    print(f"  {advice}")
+    print(f"  this session: {len(reqs)} requests, {len(rewrites)} rewrites, "
+          f"US$ {spent:.2f} at API rates and US$ {burned:.2f} on rewrites")
+    print("  and whatever the percentage says, compact before a long pause")
+    return 0
+
+
 def main(argv):
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--window", type=int, default=int(os.environ.get("KIT_CONTEXT_WINDOW", DEFAULT_WINDOW)))
@@ -275,12 +321,18 @@ def main(argv):
             print(f"no transcript in {project}", file=sys.stderr)
             return 2
 
-    reqs = read_usage(path)
+    reqs, epochs = read_session(path)
     if not reqs:
         print(f"no requests recorded in {os.path.basename(path)}", file=sys.stderr)
         return 2
 
+    # The id, without the extension: a short filename truncated to eight characters
+    # printed "edge2.js" as if it were a session id.
+    who = os.path.splitext(os.path.basename(path))[0][:8]
+    tag = f"session {who}" + ("  (guessed: the named session has no transcript yet)" if guessed else "")
     last = reqs[-1]
+    if last["_epoch"] < epochs:
+        return report_fresh(args, who, tag, reqs)
     # What the next request will have to read: everything cached plus what this
     # one just added. This is the number the prefix rewrite would be charged on.
     used = last.get("cache_read_input_tokens", 0) + last.get("cache_creation_input_tokens", 0)
@@ -297,7 +349,7 @@ def main(argv):
 
     if args.json:
         print(json.dumps({
-            "session": os.path.splitext(os.path.basename(path))[0][:8], "window": args.window,
+            "session": who, "window": args.window, "just_compacted": False,
             "used": used, "free_pct": free_pct, "verdict": verdict,
             "payback_turns": round(payback, 1) if payback else None,
             "requests": len(reqs), "rewrites": len(rewrites),
@@ -306,10 +358,6 @@ def main(argv):
         }))
         return 0
 
-    # The id, without the extension: a short filename truncated to eight characters
-    # printed "edge2.js" as if it were a session id.
-    who = os.path.splitext(os.path.basename(path))[0][:8]
-    tag = f"session {who}" + ("  (guessed: the named session has no transcript yet)" if guessed else "")
     print(f"{verdict}  {free_pct}% of the window free, {used:,} of {args.window:,} in context")
     print(f"  {tag}")
     print(f"  {advice}")

@@ -246,6 +246,50 @@ try:
         text = open(os.path.join(ROOT, skill), encoding="utf-8").read()
         check(f"12 {skill} quotes the token floors", "120k" in text and "300k" in text,
               "the skill still describes the old percentage bands")
+
+    # 13. Usage from before the last compaction describes a prefix that is gone.
+    #     Measured 2026-10-21: the nudge fired on the first prompt after /compact,
+    #     read the last request before it and reported NOW at 315,915 tokens, and
+    #     the next request carried 95,855. With no request since, there is no
+    #     number to give, so it answers HOLD and says why instead of the old size.
+    def boundary(path):
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"type": "system", "subtype": "compact_boundary",
+                                 "timestamp": "2026-08-18T01:00:00.000Z"}) + "\n")
+
+    def append(path, n, u):
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({
+                "type": "assistant", "timestamp": "2026-08-18T01:01:00.000Z",
+                "requestId": f"req_after_{n}",
+                "message": {"id": f"msg_after_{n}", "model": "claude-opus-5", "usage": u},
+            }) + "\n")
+
+    fresh = transcript(cfg, "-p", "fresh", [usage(read=315_306, write=609)])
+    boundary(fresh)
+    out, rc = run(cfg, "--session", "fresh")
+    check("13 right after a compaction it is not NOW", rc == 0 and out.startswith("HOLD"), out)
+    check("13 and it does not repeat the old size", "315,915" not in out, out)
+    check("13 and it says why there is no number", "just compacted" in out, out)
+    data = json.loads(run(cfg, "--session", "fresh", "--json")[0])
+    check("13 json marks the compaction", data.get("just_compacted") is True, data)
+    check("13 json has no stale size", data.get("used") is None, data)
+    check("13 json still counts the whole session", data.get("requests") == 1, data)
+
+    append(fresh, 0, usage(read=30_405, write=65_450))
+    out, _ = run(cfg, "--session", "fresh")
+    check("13 the first request after it is the new size",
+          out.startswith("HOLD") and "95,855 of" in out, out)
+
+    # 13b. Only the last compaction counts: an earlier one with requests after it
+    #      changes nothing, and the prefix grown since then is measured as usual.
+    twice = transcript(cfg, "-p", "twice", [usage(read=400_000)])
+    boundary(twice)
+    append(twice, 0, usage(read=310_000))
+    out, _ = run(cfg, "--session", "twice")
+    check("13b growth after an older compaction still reads NOW", out.startswith("NOW"), out)
+    data = json.loads(run(cfg, "--session", "twice", "--json")[0])
+    check("13b json says it was measured", data.get("just_compacted") is False, data)
 finally:
     shutil.rmtree(root, ignore_errors=True)
 
