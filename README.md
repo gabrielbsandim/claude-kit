@@ -26,21 +26,21 @@ the extra checks.
 ## Why use it
 
 Same model, same prompts, same repository, with the plugin and without it, measured
-per lane, two to four runs per task, on 2026-10-20 with `claude plugin eval --ablation with-without`.
+per lane, two to four runs per task, on 2026-10-20 and 2026-10-21 with `claude plugin eval --ablation with-without`.
 
 | | Claude Code alone | With task-funnel |
 | --- | --- | --- |
-| **Trivial task** (two copy fixes): trivial lane | changes the text, 0.93 | changes it, with no agent and no issue on top, 0.92 |
-| cost, time | US$ 0.14, 30 s | US$ 0.27, 46 s |
+| **Trivial task** (two copy fixes): trivial lane | changes the text, skips your checks in 3 of 8 runs, 0.95 | changes it and runs your checks, 8 of 8 runs, 1.00 |
+| cost, time | US$ 0.14, 31 s | US$ 0.26, 44 s |
 | **Simple task** (a new helper): direct lane | right, 1.00 | right, and asks nothing extra, 1.00 |
 | cost, time | US$ 0.16, 47 s | US$ 0.28, 46 s |
 | **Risky task** (a fix or a rule on money): risk lane | edits the money code before anyone checked it, 8 of 8 runs, 0.08 | checks first and stops for your approval, 8 of 8 runs, 1.00 |
 | cost, time | US$ 0.17, 39 s | US$ 0.50, 102 s, up to the spec |
 
-On trivial and simple tasks the scores match: the bare model already gets those right,
-and the plugin's job there is to stay out of the way. What it adds is what an eval
-cannot grade: its own branch, a review on the direct lane, and the pull request. The
-risk lane is where the scores split.
+On trivial and simple tasks the bare model already writes the right change, and the
+plugin's job there is to stay out of the way and still run your checks. What it adds
+beyond that is what an eval cannot grade: its own branch, a review on the direct lane,
+and the pull request. The risk lane is where the scores split.
 
 The whole task, issue to pushed branch and draft pull request, run end to end by
 `tests/e2e-lanes.sh` on a small repository: **29 s and US$ 0.35** on the trivial lane,

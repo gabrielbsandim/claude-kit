@@ -61,6 +61,15 @@ created. Its `changed-the-string` grader is a `regex` on the trace, so an `Edit`
 `sed` both count: `tool_used` takes one tool, and the e2e run changed the string with
 `sed`.
 
+On 2026-10-21, 4 runs per arm, `short-lane-ships-through-gates` scored 0.83 with the
+plugin against 1.00 without. Both misses came from the read-only git directory: one run
+inferred it from a `touch` and never tried a branch, the other stopped without editing
+because a shell write was refused, although `Edit` was not. The task skill now runs
+the git step, edits anyway when it is refused, runs the gates and reports the refusal.
+Rerun on 0.18.2 with that rule, 4 runs per arm per case, US$ 3.21: 8 of 8 at 1.00 with
+the plugin across both copy cases, 0.95 without, the bare model skipping the gates in 3
+of its 4 `trivial-lane-behaviour` runs.
+
 A second run of every outcome case later that day, US$ 6.53, put
 `risk-lane-small-money-fix` at 0.40 with the plugin. The plugin had not edited
 anything: in both runs the premise check returned NEEDS_DECISION, having found that
