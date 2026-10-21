@@ -269,6 +269,13 @@ kit board in_progress --issue <issue>
 The board move belongs here, right after the worktree exists: the first instant at
 which there is work another cycle must not pick up.
 
+**A refused git step is reported, never inferred.** Run `kit worktree add` even when a
+probe says git is read-only, because its own error is the evidence the report needs. If
+it, or a plain `git switch -c`, is refused, the change is still written in the checkout
+with the Edit tool (a sandbox can refuse a shell write and allow Edit, so a failed
+`touch` proves nothing about Edit), the stage's gates still run, nothing is committed
+to trunk, and the report names each refused step with its error.
+
 **Risk lane: the tests come first.** Dispatch the spec, including its INTERFACE line,
 to `funnel-test-writer`, working in the worktree. It writes the tests from the
 acceptance criteria and the invariants, runs them, and commits them failing.
